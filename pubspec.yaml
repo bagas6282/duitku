@@ -1,0 +1,56 @@
+name: duitku
+description: "Duitku — personal finance tracker and monthly budget planner."
+publish_to: 'none'
+version: 1.5.0+7
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  # state + storage
+  provider: ^6.1.2
+  sqflite: ^2.3.3+1
+  path: ^1.9.0
+  path_provider: ^2.1.4
+  shared_preferences: ^2.3.2
+  # Hashes the passcode before it touches disk — never store the PIN itself.
+  crypto: ^3.0.5
+
+  # ui
+  fl_chart: ^0.69.0
+  intl: ^0.20.2
+
+  # export + extras
+  pdf: ^3.11.1
+  printing: ^5.13.2
+  share_plus: ^10.0.0
+  file_picker: ^8.1.2
+  local_auth: ^2.3.0
+
+  cupertino_icons: ^1.0.8
+  google_mlkit_text_recognition: ^0.16.0
+  image_picker: ^1.2.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  flutter_launcher_icons: ^0.13.1
+  # Lets the repository tests run a real SQLite engine on the host, which the
+  # sqflite platform channel cannot do inside the test runner.
+  sqflite_common_ffi: ^2.3.3
+
+flutter:
+  uses-material-design: true
+  generate: true
+  fonts:
+    # Inter ships as one variable file; the weight axis covers every style
+    # the UI asks for, so the APK stays small and works fully offline.
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter.ttf

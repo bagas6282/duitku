@@ -1,0 +1,33 @@
+# Flutter/Dart
+.dart_tool/
+.packages
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Android
+android/.gradle/
+android/app/.cxx/
+android/local.properties
+android/key.properties
+*.jks
+*.keystore
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Output
+dist/
+
+# iOS
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+ios/Flutter/Generated.xcconfig
+ios/Flutter/app.framework
+ios/Runner.xcworkspace/
+ios/Runner.xcodeproj/project.xcworkspace/
+ios/Runner.xcodeproj/xcuserdata/
