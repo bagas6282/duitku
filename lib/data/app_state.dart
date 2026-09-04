@@ -1,0 +1,913 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:flutter/material.dart';
+
+import '../core/formatters.dart';
+import '../core/pin_hasher.dart';
+import '../core/strings.dart';
+import 'package:path/path.dart' as p;
+import 'package:shared_preferences/shared_preferences.dart';
+// sqflite exports its own `Transaction`; hide it so the model wins.
+import 'package:sqflite/sqflite.dart' hide Transaction;
+
+import 'database.dart';
+import 'models/budget.dart';
+import 'models/category.dart';
+import 'models/transaction.dart';
+import 'models/wallet.dart';
+import 'repository.dart';
+
+enum PeriodMode { daily, monthly }
+
+/// App-wide state: the loaded data plus user preferences.
+///
+/// Widgets read derived values (balances, month summaries) straight off this
+/// object rather than re-querying, so one write refreshes every screen.
+class AppState extends ChangeNotifier {
+  AppState._(this._db, this._repo, this._prefs);
+
+  AppDatabase _db;
+  FinanceRepository _repo;
+  final SharedPreferences _prefs;
+
+  FinanceRepository get repo => _repo;
+
+  // ----------------------------------------------------------------- boot
+
+  static Future<AppState> bootstrap() async {
+    final db = await AppDatabase.open();
+    final repo = FinanceRepository(db);
+    final prefs = await SharedPreferences.getInstance();
+    final state = AppState._(db, repo, prefs);
+
+    final created = await repo.runDueRecurring();
+    if (created > 0) {
+      debugPrint('Recurring: materialized $created transaction(s).');
+    }
+
+    await state.refreshAll();
+    state._applyPrefs();
+    return state;
+  }
+
+  /// Opens a state backed by [dbPath] instead of the platform database.
+  ///
+  /// Mirror of [bootstrap] for the test suite. Preferences are still resolved
+  /// normally so pref-driven behaviour can be exercised too.
+  static Future<AppState> bootstrapForTests({required String dbPath}) async {
+    final db = await AppDatabase.openForTests(dbPath);
+    final repo = FinanceRepository(db);
+    final prefs = await SharedPreferences.getInstance();
+    final state = AppState._(db, repo, prefs);
+    await state.refreshAll();
+    state._applyPrefs();
+    return state;
+  }
+
+  /// Releases the database handle. The app itself never calls this — it lives
+  /// as long as the process — but tests must, or the temp file stays locked.
+  @override
+  @mustCallSuper
+  Future<void> dispose() async {
+    await _db.close();
+    AppDatabase.overridePath(null);
+    super.dispose();
+  }
+
+  // ---------------------------------------------------------- preferences
+
+  ThemeMode _themeMode = ThemeMode.system;
+  ThemeMode get themeMode => _themeMode;
+
+  String _localeCode = 'id';
+  String get localeCode => _localeCode;
+
+  bool _locked = false;
+  bool get locked => _locked;
+
+  bool _biometricEnabled = false;
+  bool get biometricEnabled => _biometricEnabled;
+
+  bool _reminderEnabled = false;
+  bool get reminderEnabled => _reminderEnabled;
+
+  /// The stored passcode record (`iterations:salt:hash`) — never the PIN.
+  ///
+  /// Private on purpose: comparing against this directly is what a stale
+  /// plaintext check would do. Use [checkPin] instead.
+  String? get _storedPin => _prefs.getString('pin');
+  bool get pinEnabled => _prefs.getBool('pin_enabled') ?? false;
+
+  /// True when a passcode or biometric is armed, so the app should gate entry.
+  bool get lockArmed => pinEnabled || _biometricEnabled;
+
+  void _applyPrefs() {
+    final theme = _prefs.getString('theme_mode') ?? 'system';
+    _themeMode = switch (theme) {
+      'light' => ThemeMode.light,
+      'dark' => ThemeMode.dark,
+      _ => ThemeMode.system,
+    };
+    _localeCode = _prefs.getString('locale') ?? 'id';
+    // The saved language must reach Formatters here as well as in setLocale,
+    // or dates would revert to Indonesian on every cold start.
+    Formatters.setLanguage(AppLanguage.fromCode(_localeCode));
+    _biometricEnabled = _prefs.getBool('biometric') ?? false;
+    _reminderEnabled = _prefs.getBool('reminder') ?? false;
+    // Start locked whenever a guard is armed.
+    _locked = lockArmed;
+  }
+
+  Future<void> setThemeMode(ThemeMode mode) async {
+    _themeMode = mode;
+    await _prefs.setString('theme_mode', mode.name);
+    notifyListeners();
+  }
+
+  /// Switches the UI language and repoints date formatting at it.
+  ///
+  /// [Formatters] holds the locale in a static because its methods are called
+  /// from every screen; without this the language would change but dates would
+  /// keep rendering in the previous one.
+  Future<void> setLocale(String code) async {
+    _localeCode = code;
+    Formatters.setLanguage(AppLanguage.fromCode(code));
+    await _prefs.setString('locale', code);
+    notifyListeners();
+  }
+
+  Future<void> setBiometricEnabled(bool value) async {
+    _biometricEnabled = value;
+    await _prefs.setBool('biometric', value);
+    notifyListeners();
+  }
+
+  /// Sets or clears the app passcode.
+  ///
+  /// Only a salted, stretched hash reaches disk — the PIN itself is a
+  /// 4-digit secret guarding the whole ledger, so storing it verbatim (as
+  /// SharedPreferences is world-readable to root/ADB backup) is not an option.
+  Future<void> setPin(String? pin) async {
+    if (pin == null || pin.isEmpty) {
+      await _prefs.remove('pin');
+      await _prefs.setBool('pin_enabled', false);
+    } else {
+      await _prefs.setString('pin', PinHasher.hashPin(pin));
+      await _prefs.setBool('pin_enabled', true);
+    }
+    notifyListeners();
+  }
+
+  /// True when [candidate] matches the stored passcode.
+  ///
+  /// Kept here rather than in the lock screen so the hashing rule lives in one
+  /// place; the screen never sees the stored value.
+  bool checkPin(String candidate) => PinHasher.verify(candidate, _storedPin);
+
+  Future<void> setReminderEnabled(bool value) async {
+    _reminderEnabled = value;
+    await _prefs.setBool('reminder', value);
+    notifyListeners();
+  }
+
+  void unlock() {
+    _locked = false;
+    notifyListeners();
+  }
+
+  void lock() {
+    if (lockArmed) {
+      _locked = true;
+      notifyListeners();
+    }
+  }
+
+  // ------------------------------------------------------------ data cache
+
+  List<Wallet> wallets = [];
+  List<Category> categories = [];
+  List<Transaction> transactions = [];
+  List<SavingsGoal> goals = [];
+  List<RecurringRule> recurring = [];
+  Map<int, num> walletBalances = {};
+  bool loading = true;
+
+  DateTime _month = DateTime(DateTime.now().year, DateTime.now().month);
+  DateTime get month => _month;
+
+  String get monthKey =>
+      '${_month.year}-${_month.month.toString().padLeft(2, '0')}';
+
+  Future<void> refreshAll() async {
+    loading = true;
+    notifyListeners();
+
+    wallets = await _repo.wallets();
+    categories = await _repo.categories();
+    goals = await _repo.goals();
+    recurring = await _repo.recurringRules();
+    walletBalances = await _repo.walletBalances();
+    await _loadMonth();
+
+    loading = false;
+    notifyListeners();
+  }
+
+  /// Convenience alias so widgets can pull-to-refresh without knowing the
+  /// internal name.
+  Future<void> refresh() => refreshAll();
+
+  /// Window for the visible month as a half-open range: the first instant of
+  /// this month up to (but excluding) the first instant of the next.
+  ///
+  /// An inclusive `23:59:59.999` bound silently drops anything in the last
+  /// millisecond of the month, so the end is exclusive instead.
+  (DateTime, DateTime) get _monthWindow {
+    final from = DateTime(_month.year, _month.month, 1);
+    final to = DateTime(_month.year, _month.month + 1, 1);
+    return (from, to);
+  }
+
+  Future<void> _loadMonth() async {
+    final (from, to) = _monthWindow;
+    transactions = await _repo.transactions(from: from, to: to);
+  }
+
+  Future<void> setMonth(DateTime value) async {
+    _month = DateTime(value.year, value.month);
+    await _loadMonth();
+    notifyListeners();
+  }
+
+  Future<void> shiftMonth(int delta) =>
+      setMonth(DateTime(_month.year, _month.month + delta));
+
+  PeriodMode _periodMode = PeriodMode.monthly;
+  DateTime _selectedDate = DateTime.now();
+
+  PeriodMode get periodMode => _periodMode;
+  bool get isDaily => _periodMode == PeriodMode.daily;
+  DateTime get selectedDate => _selectedDate;
+
+  void setPeriodMode(PeriodMode mode) {
+    if (_periodMode == mode) return;
+    _periodMode = mode;
+    notifyListeners();
+  }
+
+  void togglePeriodMode() {
+    _periodMode = _periodMode == PeriodMode.daily
+        ? PeriodMode.monthly
+        : PeriodMode.daily;
+    notifyListeners();
+  }
+
+  Future<void> setSelectedDate(DateTime date) async {
+    _selectedDate = DateTime(date.year, date.month, date.day);
+    if (_selectedDate.year != _month.year || _selectedDate.month != _month.month) {
+      _month = DateTime(_selectedDate.year, _selectedDate.month);
+      await _loadMonth();
+    }
+    notifyListeners();
+  }
+
+  Future<void> shiftDate(int deltaDays) async {
+    await setSelectedDate(_selectedDate.add(Duration(days: deltaDays)));
+  }
+
+  Future<void> shiftPeriod(int delta) async {
+    if (_periodMode == PeriodMode.daily) {
+      await shiftDate(delta);
+    } else {
+      await shiftMonth(delta);
+    }
+  }
+
+  // ------------------------------------------------------------- summaries
+
+  num get dailyIncome => transactions
+      .where((t) => t.isIncome && Formatters.isSameDay(t.date, _selectedDate))
+      .fold<num>(0, (sum, t) => sum + t.amount);
+
+  num get dailyExpense => transactions
+      .where((t) => t.type == TxType.expense && Formatters.isSameDay(t.date, _selectedDate))
+      .fold<num>(0, (sum, t) => sum + t.amount);
+
+  num get dailyNet => dailyIncome - dailyExpense;
+
+  num get periodIncome => _periodMode == PeriodMode.daily ? dailyIncome : monthIncome;
+  num get periodExpense => _periodMode == PeriodMode.daily ? dailyExpense : monthExpense;
+  num get periodNet => periodIncome - periodExpense;
+
+  List<Transaction> get periodTransactions => _periodMode == PeriodMode.daily
+      ? transactions
+          .where((t) => Formatters.isSameDay(t.date, _selectedDate))
+          .toList(growable: false)
+      : transactions;
+
+  num get monthIncome => transactions
+      .where((t) => t.isIncome)
+      .fold<num>(0, (sum, t) => sum + t.amount);
+
+  num get monthExpense => transactions
+      .where((t) => t.type == TxType.expense)
+      .fold<num>(0, (sum, t) => sum + t.amount);
+
+  num get monthNet => monthIncome - monthExpense;
+
+  num get totalBalance =>
+      walletBalances.values.fold<num>(0, (sum, v) => sum + v);
+
+  List<Transaction> get recent =>
+      transactions.take(8).toList(growable: false);
+
+  Category? categoryOf(int? id) {
+    if (id == null) return null;
+    for (final c in categories) {
+      if (c.id == id) return c;
+    }
+    return null;
+  }
+
+  /// The category list the editor should show for a given direction.
+  List<Category> categoriesFor(TxType type) => categories
+      .where((c) => c.isIncome == (type == TxType.income))
+      .toList(growable: false);
+
+  Wallet? walletOf(int id) {
+    for (final w in wallets) {
+      if (w.id == id) return w;
+    }
+    return null;
+  }
+
+  /// Balance of a single wallet, derived from the opening amount plus every
+  /// transaction already folded into [walletBalances].
+  num balanceOf(int walletId) => walletBalances[walletId] ?? 0;
+
+  /// Income and expense totals for the last [count] months, oldest first.
+  ///
+  /// Queries per month rather than loading everything — a year of history is
+  /// a dozen small indexed scans, and the chart stays responsive.
+  Future<List<MonthlyTotal>> monthlyTotals(int count) async {
+    final out = <MonthlyTotal>[];
+    for (var i = count - 1; i >= 0; i--) {
+      final m = DateTime(_month.year, _month.month - i);
+      final from = DateTime(m.year, m.month, 1);
+      final to = DateTime(m.year, m.month + 1, 1);
+      final income = await _repo.sumFor(
+        TxType.income,
+        from: from,
+        to: to,
+      );
+      final expense = await _repo.sumFor(
+        TxType.expense,
+        from: from,
+        to: to,
+      );
+      out.add(MonthlyTotal(month: m, income: income, expense: expense));
+    }
+    return out;
+  }
+
+  /// Budget usage for the visible month, sorted by how close each cap is.
+  Future<List<BudgetProgress>> budgetProgress() async {
+    final budgets = await _repo.budgetsFor(monthKey);
+    if (budgets.isEmpty) return const [];
+
+    final (from, to) = _monthWindow;
+    final spent = await _repo.spendByCategory(
+      from: from,
+      to: to,
+      type: TxType.expense,
+    );
+
+    final list = budgets.map((b) {
+      final used = spent[b.categoryId] ?? 0;
+      return BudgetProgress(
+        budget: b,
+        category: categoryOf(b.categoryId),
+        spent: used,
+        month: _month,
+      );
+    }).toList();
+
+    list.sort((a, b) => b.ratio.compareTo(a.ratio));
+    return list;
+  }
+
+  // ---------------------------------------------------------------- writes
+
+  Future<void> addTransaction(Transaction t) async {
+    await _repo.insertTransaction(t);
+    await refreshAll();
+  }
+
+  Future<void> updateTransaction(Transaction t) async {
+    await _repo.updateTransaction(t);
+    await refreshAll();
+  }
+
+  /// Deletes and returns the row so the caller can offer an undo.
+  ///
+  /// The row is read back from the database rather than looked up in the
+  /// month cache: an undo must work even if the list is filtered or the user
+  /// navigated to another month between opening and deleting the record.
+  Future<Transaction?> deleteTransaction(int id) async {
+    final rows = await _repo.transactionsById(id);
+    final removed = rows.isEmpty ? null : rows.first;
+    await _repo.deleteTransaction(id);
+    await refreshAll();
+    return removed;
+  }
+
+  Future<void> restoreTransaction(Transaction t) async {
+    await _repo.restoreTransaction(t);
+    await refreshAll();
+  }
+
+  /// Synchronous lookup in the list this state already holds.
+  ///
+  /// Used by the paths that capture a transaction up front so the same row can
+  /// be restored later; a scan of the loaded month is cheaper and more
+  /// predictable than another async round trip through the repository.
+  Transaction? transactionById(int id) {
+    for (final t in transactions) {
+      if (t.id == id) return t;
+    }
+    return null;
+  }
+
+  Future<void> addWallet(String name, num opening, int colorIndex) async {
+    await _repo.insertWallet(
+      Wallet(
+        id: 0,
+        name: name,
+        openingBalance: opening,
+        colorIndex: colorIndex,
+      ),
+    );
+    await refreshAll();
+  }
+
+  Future<void> updateWallet(Wallet w) async {
+    await _repo.updateWallet(w);
+    await refreshAll();
+  }
+
+  Future<void> deleteWallet(int id) async {
+    await _repo.deleteWallet(id);
+    await refreshAll();
+  }
+
+  Future<void> addCategory(
+    String name,
+    int iconCode,
+    int colorIndex, {
+    required bool isIncome,
+  }) async {
+    await _repo.insertCategory(
+      Category(
+        id: 0,
+        name: name,
+        iconCode: iconCode,
+        colorIndex: colorIndex,
+        isIncome: isIncome,
+      ),
+    );
+    await refreshAll();
+  }
+
+  Future<void> archiveCategory(int id) async {
+    await _repo.archiveCategory(id);
+    await refreshAll();
+  }
+
+  // ---------------------------------------------------------------- budgets
+
+  /// Bumped whenever a cap is written.
+  ///
+  /// [budgetProgress] is asynchronous, so callers cache its Future. Without a
+  /// value that changes on write they would have no cheap way to tell that the
+  /// cached list is stale.
+  int get budgetsRevision => _budgetsRevision;
+  int _budgetsRevision = 0;
+
+  /// Creates or updates a budget for its month.
+  ///
+  /// Budgets are identified by (category, month) in the database, so the
+  /// caller's intent — not the row id — decides insert vs update. Editing a
+  /// budget onto a category that already has a cap for the same month would
+  /// otherwise violate the UNIQUE constraint and throw, so the existing row
+  /// is reused and only its limit is written.
+  Future<void> saveBudget(Budget budget) async {
+    final existing = await _repo.budgetsFor(budget.monthKey);
+
+    Budget? sameCategory;
+    Budget? sameId;
+    for (final b in existing) {
+      if (b.categoryId == budget.categoryId) sameCategory = b;
+      if (budget.id != null && b.id == budget.id) sameId = b;
+    }
+
+    final target = sameCategory ?? sameId;
+
+    if (target != null) {
+      await _repo.updateBudget(
+        budget.copyWith(id: target.id),
+      );
+    } else {
+      await _repo.insertBudget(budget);
+    }
+
+    _budgetsRevision++;
+    notifyListeners();
+  }
+
+  /// Sets (or clears) the cap for [categoryId] in the visible month.
+  ///
+  /// A limit of zero or less means "no budget": storing a zero row would leave
+  /// an empty progress bar the user cannot remove from the editor, since the
+  /// editor's only other exit is Cancel.
+  Future<void> setBudget(int categoryId, num limit) async {
+    final existing = await _repo.budgetsFor(monthKey);
+    for (final b in existing) {
+      if (b.categoryId == categoryId) {
+        if (limit <= 0) {
+          await _repo.deleteBudget(b.id!);
+        } else {
+          await _repo.updateBudget(b.copyWith(limitAmount: limit));
+        }
+        _budgetsRevision++;
+        notifyListeners();
+        return;
+      }
+    }
+    if (limit <= 0) {
+      // Nothing stored and nothing to store: still notify so a UI showing a
+      // stale list settles on the empty state.
+      _budgetsRevision++;
+      notifyListeners();
+      return;
+    }
+    await _repo.insertBudget(
+      Budget(
+        id: 0,
+        categoryId: categoryId,
+        monthKey: monthKey,
+        limitAmount: limit,
+      ),
+    );
+    _budgetsRevision++;
+    notifyListeners();
+  }
+
+  Future<void> deleteBudget(int id) async {
+    await _repo.deleteBudget(id);
+    _budgetsRevision++;
+    notifyListeners();
+  }
+
+  /// Copies last month's caps into the visible month.
+  ///
+  /// Refreshes and notifies before returning: the caller shows a snackbar with
+  /// the count, and a list that did not repaint would make the copy look like
+  /// it silently failed.
+  Future<int> copyBudgetsFromPreviousMonth() async {
+    final prev = DateTime(_month.year, _month.month - 1);
+    final fromKey = '${prev.year}-${prev.month.toString().padLeft(2, '0')}';
+    final copied = await _repo.copyBudgetsFrom(fromMonth: fromKey, toMonth: monthKey);
+    _budgetsRevision++;
+    notifyListeners();
+    return copied;
+  }
+
+  // ------------------------------------------------------------------ goals
+
+  /// Inserts a new goal or updates the existing one, keyed on [goal].
+  Future<void> saveGoal(SavingsGoal goal) async {
+    if (goal.id == 0) {
+      await _repo.insertGoal(goal);
+    } else {
+      await _repo.updateGoal(goal);
+    }
+    await refreshAll();
+  }
+
+  Future<void> addGoal(
+    String name,
+    num target,
+    DateTime? deadline,
+    int colorIndex,
+  ) async {
+    await _repo.insertGoal(
+      SavingsGoal(
+        id: 0,
+        name: name,
+        targetAmount: target,
+        savedAmount: 0,
+        colorIndex: colorIndex,
+        deadline: deadline,
+      ),
+    );
+    await refreshAll();
+  }
+
+  /// Returns the amount actually credited, so callers can tell the user what
+  /// happened instead of assuming the whole request landed.
+  Future<num> contributeToGoal(int id, num amount) async {
+    final added = await _repo.contributeToGoal(id, amount);
+    await refreshAll();
+    return added;
+  }
+
+  /// Fills a goal from a real wallet, recording the money movement as a normal
+  /// transaction so the wallet balance stays truthful instead of the goal
+  /// growing out of thin air.
+  ///
+  /// The transaction is stored **first** and the goal is then credited by the
+  /// amount that actually landed. A partial credit — the goal was near its
+  /// target — therefore leaves a transaction larger than the goal moved, which
+  /// is the honest outcome: the money really did leave the wallet.
+  ///
+  /// Returns the credited amount, or null when there was nothing to do, e.g.
+  /// the goal is already complete or no expense category exists to file the
+  /// movement under.
+  Future<num?> fundGoalFromWallet({
+    required int goalId,
+    required num amount,
+    required int walletId,
+    required bool isIncome,
+  }) async {
+    if (amount <= 0) return null;
+
+    final goal = await _repo.goalByIdAsync(goalId);
+    if (goal == null || goal.remaining <= 0) return 0;
+
+    // A top-up is filed as an expense; a payout (money coming back out of the
+    // goal) as income. Each needs a category of the matching type, because the
+    // schema ties every transaction to one.
+    final categories = categoriesFor(
+      isIncome ? TxType.income : TxType.expense,
+    );
+    if (categories.isEmpty) return null;
+
+    await _repo.insertTransaction(
+      Transaction(
+        id: 0,
+        walletId: walletId,
+        categoryId: categories.first.id,
+        type: isIncome ? TxType.income : TxType.expense,
+        amount: amount,
+        note: '${isIncome ? 'Payout' : 'Top-up'}: ${goal.name}',
+        date: DateTime.now(),
+      ),
+    );
+
+    final added = await _repo.contributeToGoal(goalId, amount);
+    await refreshAll();
+    return added;
+  }
+
+  Future<void> deleteGoal(int id) async {
+    await _repo.deleteGoal(id);
+    await refreshAll();
+  }
+
+  // -------------------------------------------------------------- recurring
+
+  Future<void> addRecurring(RecurringRule rule) async {
+    await _repo.insertRecurring(rule);
+    await refreshAll();
+  }
+
+  Future<void> updateRecurring(RecurringRule rule) async {
+    await _repo.updateRecurring(rule);
+    await refreshAll();
+  }
+
+  Future<void> deleteRecurring(int id) async {
+    await _repo.deleteRecurring(id);
+    await refreshAll();
+  }
+
+  // ----------------------------------------------------------------- backup
+
+  /// Copies the live database to a user-visible path so it can be shared.
+  Future<File> exportBackup() async {
+    await _db.checkpoint();
+    final dir = await getDatabasesPath();
+    final src = File(p.join(dir, 'duitku.db'));
+    final outDir = Directory(await _documentsDir());
+    if (!await outDir.exists()) await outDir.create(recursive: true);
+    final stamp = DateTime.now()
+        .toIso8601String()
+        .replaceAll(':', '-')
+        .split('.')
+        .first;
+    final dest = File(p.join(outDir.path, 'duitku-backup-$stamp.db'));
+    await src.copy(dest.path);
+    return dest;
+  }
+
+  Future<String> getApplicationDocumentsDirectoryPath() => _documentsDir();
+
+  Future<String> _documentsDir() async {
+    final dbDir = await getDatabasesPath();
+    return Directory(dbDir).parent.path;
+  }
+
+  /// Replaces the live database with [file]'s contents.
+  ///
+  /// The incoming file is validated and the current database is renamed aside
+  /// first: an import that fails halfway would otherwise leave the user with
+  /// no data at all. If anything goes wrong the backup is restored, so the
+  /// worst case is "nothing changed".
+  Future<void> importBackup(File file) async {
+    // Overwrite the database this state is actually using, not a hard-coded
+    // `duitku.db` next to it. The two only coincide in a real install; in a
+    // test run, or any future launch that opens a database at another path,
+    // restoring to the default file would replace a database nobody is reading
+    // and silently leave the live data untouched.
+    final dest = File(await AppDatabase.currentPath());
+    final stash = File('${dest.path}.pre-import');
+
+    // The destination directory must exist before a rename or copy can land.
+    await dest.parent.create(recursive: true);
+
+    await _validateBackup(file);
+
+    await _db.close();
+
+    for (final suffix in ['', '-wal', '-shm']) {
+      final f = File('${stash.path}$suffix');
+      if (await f.exists()) await f.delete();
+    }
+    if (await dest.exists()) await dest.rename(stash.path);
+
+    try {
+      await file.copy(dest.path);
+      _db = await AppDatabase.open();
+      _repo = FinanceRepository(_db);
+      await refreshAll();
+      // Success: the previous database is no longer needed.
+      for (final suffix in ['', '-wal', '-shm']) {
+        final f = File('${stash.path}$suffix');
+        if (await f.exists()) await f.delete();
+      }
+    } catch (e) {
+      // Put the original back so a bad file cannot destroy real data.
+      for (final suffix in ['', '-wal', '-shm']) {
+        final f = File('${dest.path}$suffix');
+        if (await f.exists()) await f.delete();
+      }
+      if (await stash.exists()) await stash.rename(dest.path);
+      _db = await AppDatabase.open();
+      _repo = FinanceRepository(_db);
+      await refreshAll();
+      rethrow;
+    }
+  }
+
+  /// Rejects files that are not a Duitku database before anything is touched.
+  ///
+  /// A file is not trusted just because it is valid SQLite, or even because it
+  /// has the right table names: a hand-made database with those three tables
+  /// but different columns would import cleanly and then crash every screen as
+  /// soon as it was queried. The columns and the schema version are checked
+  /// too, so a bad file is rejected while the live data is still untouched.
+  Future<void> _validateBackup(File file) async {
+    if (!await file.exists()) {
+      throw const FileSystemException('Backup file no longer exists');
+    }
+
+    // Open a throwaway connection and confirm the tables we expect are there.
+    // A wrong or corrupt file fails here, while the live database is intact.
+    final probe = await openDatabase(
+      file.path,
+      readOnly: true,
+    );
+    try {
+      // A non-SQLite file does not always throw on open, so prove it reads.
+      final integrity = await probe.rawQuery('PRAGMA integrity_check');
+      final verdict = integrity.isEmpty
+          ? ''
+          : (integrity.first.values.first?.toString() ?? '');
+      if (verdict != 'ok') {
+        throw const FormatException(
+          'Not a Duitku backup — the file is not a healthy SQLite database',
+        );
+      }
+
+      final tables = await probe.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type = 'table'",
+      );
+      final names = tables
+          .map((r) => r['name'])
+          .whereType<String>()
+          .toSet();
+
+      const required = {'wallets', 'categories', 'transactions'};
+      final missing = required.difference(names);
+      if (missing.isNotEmpty) {
+        throw FormatException(
+          'Not a Duitku backup — missing table(s): ${missing.join(', ')}',
+        );
+      }
+
+      // The column check is what stops a same-named but differently shaped
+      // database from being accepted.
+      const expectedColumns = {
+        'wallets': {'id', 'name', 'opening_balance', 'color_index'},
+        'categories': {'id', 'name', 'icon_code', 'color_index', 'is_income'},
+        'transactions': {
+          'id',
+          'type',
+          'amount',
+          'category_id',
+          'wallet_id',
+          'occurred_at',
+        },
+      };
+
+      for (final entry in expectedColumns.entries) {
+        final cols = await probe.rawQuery('PRAGMA table_info(${entry.key})');
+        final have = cols.map((r) => r['name']).whereType<String>().toSet();
+        final lack = entry.value.difference(have);
+        if (lack.isNotEmpty) {
+          throw FormatException(
+            'Not a Duitku backup — table "${entry.key}" is missing '
+            'column(s): ${lack.join(', ')}',
+          );
+        }
+      }
+
+      // Refuse a file written by a newer, unknown schema version: importing it
+      // would silently corrupt later writes.
+      final version = await probe.getVersion();
+      if (version > AppDatabase.schemaVersion) {
+        throw FormatException(
+          'Backup was made by a newer version of Duitku '
+          '(schema v$version, this app supports v${AppDatabase.schemaVersion})',
+        );
+      }
+    } finally {
+      await probe.close();
+    }
+  }
+
+  Future<void> wipeEverything() async {
+    await _repo.wipe();
+    await refreshAll();
+  }
+}
+
+/// One month of income/expense history, used by the trend chart.
+class MonthlyTotal {
+  const MonthlyTotal({
+    required this.month,
+    required this.income,
+    required this.expense,
+  });
+
+  final DateTime month;
+  final num income;
+  final num expense;
+
+  num get net => income - expense;
+}
+
+/// A budget plus its live consumption, ready for the UI.
+class BudgetProgress {
+  const BudgetProgress({
+    required this.budget,
+    required this.category,
+    required this.spent,
+    this.month,
+  });
+
+  final Budget budget;
+  final Category? category;
+  final num spent;
+
+  /// The month being viewed; drives the "days left" hint.
+  final DateTime? month;
+
+  num get limit => budget.limitAmount;
+  num get remaining => (limit - spent).clamp(0, limit);
+  double get ratio => limit <= 0 ? 0 : (spent / limit).clamp(0.0, 2.0);
+  bool get over => spent > limit;
+
+  String get monthKey => budget.monthKey;
+
+  /// Days remaining in the viewed month, or null when the month is unknown.
+  int? get daysLeftInMonth {
+    final m = month;
+    if (m == null) return null;
+    final last = DateTime(m.year, m.month + 1, 0).day;
+    final now = DateTime.now();
+    if (now.year != m.year || now.month != m.month) return null;
+    return (last - now.day).clamp(0, last);
+  }
+}
