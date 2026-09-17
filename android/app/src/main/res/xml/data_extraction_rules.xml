@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Backup and device-to-device transfer are switched off for this app.
+
+  Android 12+ reads this file; older releases read the manifest's
+  android:allowBackup / android:fullBackupContent attributes. Both are set, so
+  the exclusion holds across the whole supported range.
+
+  Rationale: the app's private storage holds every recorded transaction and the
+  salted hash of the unlock PIN. Nothing here needs cloud backup, and there is
+  no server the data could be restored from, so the safest option is to keep it
+  on the device.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="file" />
+        <exclude domain="external" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="file" />
+        <exclude domain="external" />
+    </device-transfer>
+</data-extraction-rules>
