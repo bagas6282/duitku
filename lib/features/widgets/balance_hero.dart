@@ -3,9 +3,8 @@ import 'package:flutter/material.dart';
 import '../../core/theme.dart';
 import '../../core/strings.dart';
 
-/// The hero card on the dashboard.
-///
-/// Supports both Daily (Per Tanggal) and Monthly (Per Bulan) calculations.
+/// Kartu saldo utama di dashboard.
+/// Dark-glass card dengan gradient royal-blue, typography bold headline.
 class BalanceHero extends StatelessWidget {
   const BalanceHero({
     super.key,
@@ -35,202 +34,170 @@ class BalanceHero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final fg = isDark ? AppColors.textPrimaryDark : Colors.white;
-    final muted = fg.withValues(alpha: 0.62);
 
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? AppColors.inkSoft : AppColors.ink,
+        gradient: LinearGradient(
+          colors: isDark
+              ? [const Color(0xFF0D1835), const Color(0xFF112040)]
+              : [const Color(0xFF1346C8), const Color(0xFF1D5CE0)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
         borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(
+          color: Colors.white.withOpacity(0.07),
+          width: 1,
+        ),
       ),
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.lg,
-        AppSpacing.md,
-        AppSpacing.lg,
-        AppSpacing.lg,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Segmented switch: [ Harian ] [ Bulanan ]
-          Row(
-            children: [
-              Expanded(
-                child: Container(
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: fg.withValues(alpha: 0.09),
-                    borderRadius: BorderRadius.circular(AppRadius.pill),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        child: Stack(
+          children: [
+            // Accent circle — dekoratif subtle
+            Positioned(
+              top: -40,
+              right: -20,
+              child: Container(
+                width: 160,
+                height: 160,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withOpacity(0.04),
+                ),
+              ),
+            ),
+            Positioned(
+              bottom: -30,
+              left: -30,
+              child: Container(
+                width: 120,
+                height: 120,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppColors.mint.withOpacity(0.06),
+                ),
+              ),
+            ),
+
+            // Konten
+            Padding(
+              padding: const EdgeInsets.all(AppSpacing.xl),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Toggle Harian / Bulanan
+                  _PeriodToggle(
+                    isDaily: isDaily,
+                    onToggle: onToggleMode,
                   ),
-                  padding: const EdgeInsets.all(3),
-                  child: Row(
+
+                  const SizedBox(height: AppSpacing.xl),
+
+                  // Label periode
+                  GestureDetector(
+                    onTap: onTapPick,
+                    child: Row(
+                      children: [
+                        Text(
+                          periodLabel,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white.withOpacity(0.55),
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                        if (onTapPick != null) ...[
+                          const SizedBox(width: 4),
+                          Icon(
+                            Icons.keyboard_arrow_down_rounded,
+                            size: 16,
+                            color: Colors.white.withOpacity(0.45),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 6),
+
+                  // Saldo utama
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
+                      if (onPrevious != null)
+                        _NavArrow(
+                          icon: Icons.chevron_left_rounded,
+                          onTap: onPrevious!,
+                        ),
                       Expanded(
-                        child: _SegmentItem(
-                          label: context.tr('Daily (Per Date)'),
-                          icon: Icons.today_rounded,
-                          selected: isDaily,
-                          onTap: () => onToggleMode(true),
-                          fg: fg,
+                        child: Text(
+                          _fmt(balance),
+                          style: const TextStyle(
+                            fontSize: 34,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                            letterSpacing: -1.2,
+                            height: 1.1,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
+                      if (onNext != null)
+                        _NavArrow(
+                          icon: Icons.chevron_right_rounded,
+                          onTap: onNext!,
+                        ),
+                    ],
+                  ),
+
+                  if (periodSublabel != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      periodSublabel!,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.white.withOpacity(0.42),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+
+                  const SizedBox(height: AppSpacing.xl),
+
+                  // Divider tipis
+                  Container(
+                    height: 1,
+                    color: Colors.white.withOpacity(0.1),
+                  ),
+
+                  const SizedBox(height: AppSpacing.lg),
+
+                  // Pemasukan / Pengeluaran
+                  Row(
+                    children: [
                       Expanded(
-                        child: _SegmentItem(
-                          label: context.tr('Monthly (Per Month)'),
-                          icon: Icons.calendar_month_rounded,
-                          selected: !isDaily,
-                          onTap: () => onToggleMode(false),
-                          fg: fg,
+                        child: _StatChip(
+                          icon: Icons.south_west_rounded,
+                          label: context.tr('Income'),
+                          value: _fmt(income),
+                          color: AppColors.mint,
+                        ),
+                      ),
+                      const SizedBox(width: AppSpacing.lg),
+                      Expanded(
+                        child: _StatChip(
+                          icon: Icons.north_east_rounded,
+                          label: context.tr('Expense'),
+                          value: _fmt(expense),
+                          color: const Color(0xFFFF6B6B),
                         ),
                       ),
                     ],
                   ),
-                ),
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              _NavButton(
-                icon: Icons.calendar_today_rounded,
-                fg: fg,
-                onTap: onTapPick,
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.md),
-          // Stepper: < [Date or Month label] >
-          _PeriodStepper(
-            label: periodLabel,
-            onPrevious: onPrevious,
-            onNext: onNext,
-            onTap: onTapPick,
-            fg: fg,
-          ),
-          const SizedBox(height: AppSpacing.md),
-          Text(
-            context.tr('Total balance'),
-            style: TextStyle(
-              fontSize: 13,
-              letterSpacing: 0.3,
-              fontWeight: FontWeight.w500,
-              color: muted,
-            ),
-          ),
-          const SizedBox(height: AppSpacing.xs),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 220),
-            transitionBuilder: (child, animation) => FadeTransition(
-              opacity: animation,
-              child: SlideTransition(
-                position: Tween<Offset>(
-                  begin: const Offset(0, 0.15),
-                  end: Offset.zero,
-                ).animate(animation),
-                child: child,
-              ),
-            ),
-            child: KeyedSubtree(
-              key: ValueKey(balance),
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  _money(balance),
-                  style: TextStyle(
-                    fontSize: 34,
-                    height: 1.05,
-                    letterSpacing: -1.2,
-                    fontWeight: FontWeight.w700,
-                    color: fg,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          Row(
-            children: [
-              Expanded(
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 220),
-                  child: KeyedSubtree(
-                    key: ValueKey('in-$income-$isDaily'),
-                    child: _Delta(
-                      label: 'In',
-                      value: income,
-                      color: AppColors.mint,
-                      muted: muted,
-                    ),
-                  ),
-                ),
-              ),
-              Container(width: 1, height: 34, color: fg.withValues(alpha: 0.14)),
-              const SizedBox(width: AppSpacing.lg),
-              Expanded(
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 220),
-                  child: KeyedSubtree(
-                    key: ValueKey('out-$expense-$isDaily'),
-                    child: _Delta(
-                      label: 'Out',
-                      value: expense,
-                      color: AppColors.expense,
-                      muted: muted,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _money(num value) => _fmt(value);
-}
-
-class _SegmentItem extends StatelessWidget {
-  const _SegmentItem({
-    required this.label,
-    required this.icon,
-    required this.selected,
-    required this.onTap,
-    required this.fg,
-  });
-
-  final String label;
-  final IconData icon;
-  final bool selected;
-  final VoidCallback onTap;
-  final Color fg;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        decoration: BoxDecoration(
-          color: selected ? fg.withValues(alpha: 0.18) : Colors.transparent,
-          borderRadius: BorderRadius.circular(AppRadius.pill),
-        ),
-        alignment: Alignment.center,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 14, color: selected ? fg : fg.withValues(alpha: 0.5)),
-            const SizedBox(width: 5),
-            Flexible(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                  color: selected ? fg : fg.withValues(alpha: 0.65),
-                ),
+                ],
               ),
             ),
           ],
@@ -238,156 +205,161 @@ class _SegmentItem extends StatelessWidget {
       ),
     );
   }
-}
 
-String _fmt(num value) {
-  final s = value.toStringAsFixed(0);
-  final buf = StringBuffer();
-  for (var i = 0; i < s.length; i++) {
-    if (i > 0 && (s.length - i) % 3 == 0) buf.write('.');
-    buf.write(s[i]);
+  static String _fmt(num v) {
+    final s = v.abs().toStringAsFixed(0);
+    final parts = <String>[];
+    var i = s.length;
+    while (i > 0) {
+      parts.insert(0, s.substring(i > 3 ? i - 3 : 0, i));
+      i -= 3;
+    }
+    final abs = 'Rp ${parts.join('.')}';
+    return v < 0 ? '-$abs' : abs;
   }
-  return 'Rp${buf.toString()}';
 }
 
-class _PeriodStepper extends StatelessWidget {
-  const _PeriodStepper({
-    required this.label,
-    required this.fg,
-    this.onPrevious,
-    this.onNext,
-    this.onTap,
-  });
+// ─── Sub-widgets ──────────────────────────────────────────────────────────────
 
+class _PeriodToggle extends StatelessWidget {
+  const _PeriodToggle({required this.isDaily, required this.onToggle});
+  final bool isDaily;
+  final ValueChanged<bool> onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 34,
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.09),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+      ),
+      padding: const EdgeInsets.all(3),
+      child: Row(
+        children: [
+          _ToggleItem(label: 'Harian', selected: isDaily, onTap: () => onToggle(true)),
+          _ToggleItem(label: 'Bulanan', selected: !isDaily, onTap: () => onToggle(false)),
+        ],
+      ),
+    );
+  }
+}
+
+class _ToggleItem extends StatelessWidget {
+  const _ToggleItem({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
   final String label;
-  final Color fg;
-  final VoidCallback? onPrevious;
-  final VoidCallback? onNext;
-  final VoidCallback? onTap;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOutCubic,
+          decoration: BoxDecoration(
+            color: selected ? Colors.white.withOpacity(0.15) : Colors.transparent,
+            borderRadius: BorderRadius.circular(AppRadius.pill),
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize:   12.5,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              color:      Colors.white.withOpacity(selected ? 0.95 : 0.5),
+              letterSpacing: 0.1,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StatChip extends StatelessWidget {
+  const _StatChip({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Expanded(
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(AppRadius.sm),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      label,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: fg,
-                        letterSpacing: -0.2,
-                      ),
-                    ),
-                  ),
-                  Icon(
-                    Icons.arrow_drop_down_rounded,
-                    size: 20,
-                    color: fg.withValues(alpha: 0.7),
-                  ),
-                ],
-              ),
-            ),
+        Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.15),
+            borderRadius: BorderRadius.circular(AppRadius.xs),
           ),
+          child: Icon(icon, size: 16, color: color),
         ),
-        const SizedBox(width: AppSpacing.sm),
-        _NavButton(icon: Icons.chevron_left_rounded, onTap: onPrevious, fg: fg),
-        const SizedBox(width: AppSpacing.sm),
-        _NavButton(icon: Icons.chevron_right_rounded, onTap: onNext, fg: fg),
-      ],
-    );
-  }
-}
-
-class _NavButton extends StatelessWidget {
-  const _NavButton({required this.icon, required this.fg, this.onTap});
-
-  final IconData icon;
-  final Color fg;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: fg.withValues(alpha: 0.10),
-      borderRadius: BorderRadius.circular(AppRadius.sm),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(AppRadius.sm),
-        child: SizedBox(
-          width: 34,
-          height: 34,
-          child: Icon(icon, size: 20, color: fg),
-        ),
-      ),
-    );
-  }
-}
-
-class _Delta extends StatelessWidget {
-  const _Delta({
-    required this.label,
-    required this.value,
-    required this.color,
-    required this.muted,
-  });
-
-  final String label;
-  final num value;
-  final Color color;
-  final Color muted;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Container(
-              width: 7,
-              height: 7,
-              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-            ),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Text(
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
                 label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: 12,
-                  color: muted,
+                  fontSize: 11,
                   fontWeight: FontWeight.w500,
+                  color: Colors.white.withOpacity(0.5),
+                  letterSpacing: 0.2,
                 ),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 4),
-        FittedBox(
-          fit: BoxFit.scaleDown,
-          alignment: Alignment.centerLeft,
-          child: Text(
-            _fmt(value),
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: color,
-              letterSpacing: -0.4,
-              fontFeatures: const [FontFeature.tabularFigures()],
-            ),
+              const SizedBox(height: 1),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                  letterSpacing: -0.3,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
           ),
         ),
       ],
+    );
+  }
+}
+
+class _NavArrow extends StatelessWidget {
+  const _NavArrow({required this.icon, required this.onTap});
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 32,
+        height: 32,
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(AppRadius.pill),
+        ),
+        child: Icon(icon, size: 18, color: Colors.white.withOpacity(0.7)),
+      ),
     );
   }
 }

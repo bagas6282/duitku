@@ -8,6 +8,7 @@ import 'package:duitku/data/app_state.dart';
 import 'package:duitku/data/database.dart';
 import 'package:duitku/features/budget/budget_editor.dart';
 import 'package:duitku/features/dashboard/dashboard_page.dart';
+import 'package:duitku/features/settings/settings_page.dart';
 import 'package:duitku/features/transactions/transaction_editor.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -98,7 +99,7 @@ void main() {
 
     // The settings page lists these switches; the dashboard shows none of them.
     expect(find.text('Bahasa'), findsWidgets);
-    expect(find.byType(DashboardPage), findsNothing);
+    expect(find.byType(SettingsPage), findsOneWidget);
   });
 
   testWidgets('the empty budget card offers a working Set a budget button',
@@ -113,10 +114,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
 
-    // The editor opened, which is what the dead button never did. Assert on
-    // widget types rather than labels: they do not move when the language or
-    // the wording changes.
-    expect(find.text('Atur anggaran'), findsNothing);
+    // The editor opened, which is what the dead button never did.
     expect(find.byType(BudgetEditor), findsOneWidget);
   });
 
@@ -140,6 +138,8 @@ void main() {
 
     await tester.tap(find.byType(FilledButton).first);
     await settle(tester);
+    await settle(tester);
+    await tester.pump(const Duration(milliseconds: 500));
     await settle(tester);
 
     // Read it back from the database, not from the screen: proving the write

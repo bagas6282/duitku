@@ -122,7 +122,7 @@ class _RecurringEditorState extends State<RecurringEditor> {
       if (!mounted) return;
       setState(() => _saving = false);
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Could not save: $e')));
+          .showSnackBar(SnackBar(content: Text('${context.tr('Could not save')}: $e')));
     }
   }
 
@@ -130,7 +130,7 @@ class _RecurringEditorState extends State<RecurringEditor> {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final muted =
-        Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55);
+        Theme.of(context).colorScheme.onSurface.withOpacity(0.55);
     final cats = state.categoriesFor(_type);
     final wallets = state.wallets;
 
@@ -177,7 +177,7 @@ class _RecurringEditorState extends State<RecurringEditor> {
           ),
           const SizedBox(height: AppSpacing.md),
           DropdownButtonFormField<int>(
-            initialValue:
+            value:
                 cats.any((c) => c.id == _categoryId) ? _categoryId : null,
             decoration: InputDecoration(labelText: context.tr('Category')),
             items: [
@@ -188,7 +188,7 @@ class _RecurringEditorState extends State<RecurringEditor> {
           ),
           const SizedBox(height: AppSpacing.md),
           DropdownButtonFormField<int>(
-            initialValue:
+            value:
                 wallets.any((w) => w.id == _walletId) ? _walletId : null,
             decoration: InputDecoration(labelText: context.tr('Wallet')),
             items: [
@@ -199,7 +199,7 @@ class _RecurringEditorState extends State<RecurringEditor> {
           ),
           const SizedBox(height: AppSpacing.md),
           DropdownButtonFormField<RecurFreq>(
-            initialValue: _frequency,
+            value: _frequency,
             decoration: InputDecoration(labelText: context.tr('Repeats')),
             items: [
               DropdownMenuItem(
@@ -216,7 +216,7 @@ class _RecurringEditorState extends State<RecurringEditor> {
           const SizedBox(height: AppSpacing.md),
           if (_frequency == RecurFreq.monthly)
             DropdownButtonFormField<int>(
-              initialValue: _dayOfMonth,
+              value: _dayOfMonth,
               decoration: InputDecoration(
                 labelText: context.tr('Day of month'),
                 helperText: context.tr('Short months use their last day'),
@@ -229,7 +229,7 @@ class _RecurringEditorState extends State<RecurringEditor> {
             )
           else
             DropdownButtonFormField<int>(
-              initialValue: _weekday,
+              value: _weekday,
               decoration: InputDecoration(labelText: context.tr('Day of week')),
               items: [
                 DropdownMenuItem(value: DateTime.monday, child: Text(context.tr('Monday'))),

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import '../../core/transitions.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/app_icons.dart';
 import '../../core/formatters.dart';
 import '../../core/theme.dart';
 import '../../data/app_state.dart';
@@ -63,7 +65,7 @@ class _TransactionsPageState extends State<TransactionsPage> {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final muted =
-        Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55);
+        Theme.of(context).colorScheme.onSurface.withOpacity(0.55);
     final items = _filtered(state);
 
     return Column(
@@ -121,7 +123,7 @@ class _TransactionsPageState extends State<TransactionsPage> {
                     _FilterChip(
                       label: context.tr('Expense'),
                       selected: _typeFilter == TxType.expense,
-                      color: AppColors.expense,
+                      color: AppColors.danger,
                       onTap: () => setState(() {
                         _typeFilter = _typeFilter == TxType.expense
                             ? null
@@ -221,7 +223,7 @@ class _TransactionsPageState extends State<TransactionsPage> {
 
   void _openEditor(Transaction t, AppState state) {
     Navigator.of(context).push(
-      MaterialPageRoute(
+      AppPageRoute(
         builder: (_) => TransactionEditor(initial: t),
       ),
     );
@@ -236,7 +238,7 @@ class _MonthChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: AppColors.mint.withValues(alpha: 0.12),
+      color: AppColors.mint.withOpacity(0.12),
       borderRadius: BorderRadius.circular(AppRadius.md),
       child: InkWell(
         onTap: () => showMonthPicker(context),
@@ -280,7 +282,7 @@ class _ChipDivider extends StatelessWidget {
         width: 1,
         height: 16,
         margin: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
-        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.12),
+        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.12),
       ),
     );
   }
@@ -307,7 +309,7 @@ class _FilterChip extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(right: 6),
       child: Material(
-        color: selected ? accent.withValues(alpha: 0.16) : fg.withValues(alpha: 0.05),
+        color: selected ? accent.withOpacity(0.16) : fg.withOpacity(0.05),
         borderRadius: BorderRadius.circular(AppRadius.pill),
         child: InkWell(
           onTap: onTap,
@@ -319,7 +321,7 @@ class _FilterChip extends StatelessWidget {
               style: TextStyle(
                 fontSize: 12.5,
                 fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                color: selected ? accent : fg.withValues(alpha: 0.7),
+                color: selected ? accent : fg.withOpacity(0.7),
               ),
             ),
           ),
@@ -382,7 +384,7 @@ class _GroupedList extends StatelessWidget {
                       color: Theme.of(context)
                           .colorScheme
                           .onSurface
-                          .withValues(alpha: 0.5),
+                          .withOpacity(0.5),
                       letterSpacing: 0.2,
                     ),
                   ),
@@ -392,7 +394,7 @@ class _GroupedList extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: dayTotal >= 0 ? AppColors.mint : AppColors.expense,
+                      color: dayTotal >= 0 ? AppColors.mint : AppColors.danger,
                     ),
                   ),
                 ],
@@ -428,7 +430,7 @@ class _GroupedList extends StatelessWidget {
 
   IconData _icon(Category? c) {
     if (c == null) return Icons.swap_horiz_rounded;
-    return IconData(c.iconCode, fontFamily: 'MaterialIcons');
+    return AppIcons.fromCode(c.iconCode);
   }
 
   Color _color(Category? c) {
@@ -446,7 +448,7 @@ class _EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final muted =
-        Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5);
+        Theme.of(context).colorScheme.onSurface.withOpacity(0.5);
 
     return Center(
       child: Column(

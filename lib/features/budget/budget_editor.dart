@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/app_icons.dart';
 import '../../core/formatters.dart';
 import '../../core/theme.dart';
 import '../../data/app_state.dart';
@@ -53,7 +54,7 @@ class _BudgetEditorState extends State<BudgetEditor> {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final theme = Theme.of(context);
-    final muted = theme.colorScheme.onSurface.withValues(alpha: 0.55);
+    final muted = theme.colorScheme.onSurface.withOpacity(0.55);
 
     // Budgets only make sense against expenses.
     final cats = state.categoriesFor(TxType.expense);
@@ -126,7 +127,7 @@ class _BudgetEditorState extends State<BudgetEditor> {
                       color: Theme.of(context)
                           .colorScheme
                           .onSurface
-                          .withValues(alpha: 0.2),
+                          .withOpacity(0.2),
                     ),
                     border: InputBorder.none,
                     isDense: true,
@@ -227,7 +228,7 @@ class _BudgetEditorState extends State<BudgetEditor> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(backgroundColor: AppColors.expense),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
             child: Text(context.tr('Delete')),
           ),
         ],
@@ -266,7 +267,7 @@ class _Preset extends StatelessWidget {
   Widget build(BuildContext context) {
     final fg = Theme.of(context).colorScheme.onSurface;
     return Material(
-      color: fg.withValues(alpha: 0.05),
+      color: fg.withOpacity(0.05),
       borderRadius: BorderRadius.circular(AppRadius.pill),
       child: InkWell(
         onTap: onTap,
@@ -278,7 +279,7 @@ class _Preset extends StatelessWidget {
             style: TextStyle(
               fontSize: 12.5,
               fontWeight: FontWeight.w600,
-              color: fg.withValues(alpha: 0.75),
+              color: fg.withOpacity(0.75),
             ),
           ),
         ),
@@ -316,8 +317,8 @@ class _CategoryPicker extends StatelessWidget {
                 color: selectedId == c.id
                     ? AppColors
                         .categorical[c.colorIndex % AppColors.categorical.length]
-                        .withValues(alpha: 0.18)
-                    : fg.withValues(alpha: 0.05),
+                        .withOpacity(0.18)
+                    : fg.withOpacity(0.05),
                 borderRadius: BorderRadius.circular(AppRadius.md),
                 border: Border.all(
                   color: selectedId == c.id
@@ -330,7 +331,7 @@ class _CategoryPicker extends StatelessWidget {
               child: Row(
                 children: [
                   Icon(
-                    IconData(c.iconCode, fontFamily: 'MaterialIcons'),
+                    AppIcons.fromCode(c.iconCode),
                     size: 16,
                     color: AppColors
                         .categorical[c.colorIndex % AppColors.categorical.length],
@@ -360,12 +361,12 @@ class _Preview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final muted =
-        Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55);
+        Theme.of(context).colorScheme.onSurface.withOpacity(0.55);
 
     return Container(
       padding: const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
-        color: AppColors.mint.withValues(alpha: 0.07),
+        color: AppColors.mint.withOpacity(0.07),
         borderRadius: BorderRadius.circular(AppRadius.md),
       ),
       child: Row(

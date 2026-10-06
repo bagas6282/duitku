@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import '../../core/transitions.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/app_icons.dart';
 import '../../core/formatters.dart';
 import '../../core/theme.dart';
 import '../../data/app_state.dart';
@@ -58,7 +60,9 @@ class _BudgetPageState extends State<BudgetPage> {
 
   void _maybeReload() {
     final state = context.watch<AppState>();
-    final signature = '${state.monthKey}|${state.transactions.length}|'
+    // dataRevision, not the row count: editing an amount changes what the
+    // progress bars must show without changing how many rows exist.
+    final signature = '${state.monthKey}|${state.dataRevision}|'
         '${state.budgetsRevision}';
     if (signature == _signature && _progress != null) return;
     _signature = signature;
@@ -73,7 +77,7 @@ class _BudgetPageState extends State<BudgetPage> {
 
     final state = context.watch<AppState>();
     final muted =
-        Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55);
+        Theme.of(context).colorScheme.onSurface.withOpacity(0.55);
 
     return FutureBuilder<List<BudgetProgress>>(
       future: _progress,
@@ -153,7 +157,7 @@ class _BudgetPageState extends State<BudgetPage> {
 
   void _openEditor(BuildContext context, AppState state) {
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const BudgetEditor()),
+      AppPageRoute(builder: (_) => const BudgetEditor()),
     );
   }
 }
@@ -176,7 +180,7 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final muted = theme.colorScheme.onSurface.withValues(alpha: 0.55);
+    final muted = theme.colorScheme.onSurface.withOpacity(0.55);
     final remaining = totalLimit - totalSpent;
 
     return Column(
@@ -221,7 +225,7 @@ class _Header extends StatelessWidget {
               color: theme.cardTheme.color,
               borderRadius: BorderRadius.circular(AppRadius.lg),
               border: Border.all(
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.07),
+                color: theme.colorScheme.onSurface.withOpacity(0.07),
               ),
             ),
             child: Row(
@@ -234,12 +238,12 @@ class _Header extends StatelessWidget {
                 _Stat(
                   label: context.tr('Spent'),
                   value: Formatters.currency(totalSpent),
-                  color: AppColors.expense,
+                  color: AppColors.danger,
                 ),
                 _Stat(
                   label: remaining >= 0 ? 'Left' : 'Over',
                   value: Formatters.currency(remaining.abs()),
-                  color: remaining >= 0 ? AppColors.mint : AppColors.expense,
+                  color: remaining >= 0 ? AppColors.mint : AppColors.danger,
                 ),
               ],
             ),
@@ -260,7 +264,7 @@ class _Stat extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final muted =
-        Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5);
+        Theme.of(context).colorScheme.onSurface.withOpacity(0.5);
     return Expanded(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -293,7 +297,7 @@ class _BudgetCardItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final muted = theme.colorScheme.onSurface.withValues(alpha: 0.55);
+    final muted = theme.colorScheme.onSurface.withOpacity(0.55);
     final cat = progress.category;
     final accent = AppColors
         .categorical[(cat?.colorIndex ?? 0) % AppColors.categorical.length];
@@ -305,7 +309,7 @@ class _BudgetCardItem extends StatelessWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(AppRadius.lg),
           onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(
+            AppPageRoute(
               builder: (_) => BudgetEditor(initial: progress.budget),
             ),
           ),
@@ -319,13 +323,13 @@ class _BudgetCardItem extends StatelessWidget {
                       width: 38,
                       height: 38,
                       decoration: BoxDecoration(
-                        color: accent.withValues(alpha: 0.14),
+                        color: accent.withOpacity(0.14),
                         borderRadius: BorderRadius.circular(AppRadius.sm),
                       ),
                       child: Icon(
                         cat == null
                             ? Icons.label_outline_rounded
-                            : IconData(cat.iconCode, fontFamily: 'MaterialIcons'),
+                            : AppIcons.fromCode(cat.iconCode),
                         size: 19,
                         color: accent,
                       ),
@@ -366,7 +370,7 @@ class _BudgetCardItem extends StatelessWidget {
                       value: v,
                       minHeight: 7,
                       backgroundColor:
-                          theme.colorScheme.onSurface.withValues(alpha: 0.08),
+                          theme.colorScheme.onSurface.withOpacity(0.08),
                       valueColor: AlwaysStoppedAnimation(
                         AppColors.forRatio(progress.ratio),
                       ),
@@ -385,7 +389,7 @@ class _BudgetCardItem extends StatelessWidget {
                         fontWeight: FontWeight.w600,
                         color: progress.remaining >= 0
                             ? AppColors.mint
-                            : AppColors.expense,
+                            : AppColors.danger,
                       ),
                     ),
                     const Spacer(),
@@ -416,7 +420,7 @@ class _PercentBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.14),
+        color: color.withOpacity(0.14),
         borderRadius: BorderRadius.circular(AppRadius.pill),
       ),
       child: Text(
@@ -472,7 +476,7 @@ class _Empty extends StatelessWidget {
             const SizedBox(height: AppSpacing.xl),
             FilledButton.icon(
               onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const BudgetEditor()),
+                AppPageRoute(builder: (_) => const BudgetEditor()),
               ),
               icon: const Icon(Icons.add_rounded, size: 18),
               label: Text(context.tr('Add budget')),

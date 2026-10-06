@@ -31,3 +31,7 @@ ios/Flutter/app.framework
 ios/Runner.xcworkspace/
 ios/Runner.xcodeproj/project.xcworkspace/
 ios/Runner.xcodeproj/xcuserdata/
+
+# Kotlin incremental-compilation cache (generated)
+android/.kotlin/
+referensi_ui/

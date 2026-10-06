@@ -1,21 +1,23 @@
 import 'package:flutter/material.dart';
+import '../../core/transitions.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/app_icons.dart';
 import '../../core/formatters.dart';
+import '../../core/strings.dart';
 import '../../core/theme.dart';
 import '../../data/app_state.dart';
 import '../../data/models/category.dart';
 import '../../data/models/transaction.dart';
+import '../budget/budget_editor.dart';
+import '../budget/budget_page.dart';
+import '../receipt/receipt_scan_launcher.dart';
+import '../shell/home_shell.dart';
 import '../widgets/balance_hero.dart';
 import '../widgets/budget_bar.dart';
 import '../widgets/charts.dart';
 import '../widgets/transaction_tile.dart';
 import 'show_month_picker.dart';
-import '../budget/budget_editor.dart';
-import '../budget/budget_page.dart';
-import '../shell/home_shell.dart';
-import '../../core/strings.dart';
-import '../receipt/receipt_scan_launcher.dart';
 
 /// Home tab: balance hero, quick stats, category donut, budget progress and
 /// the latest transactions.
@@ -36,7 +38,33 @@ class DashboardPage extends StatelessWidget {
           floating: true,
           backgroundColor: Theme.of(context).scaffoldBackgroundColor,
           surfaceTintColor: Colors.transparent,
-          title: const Text('Duitku'),
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                state.currentUser != null
+                    ? 'Halo, ${state.currentUser!.name.trim().split(' ').first} 👋'
+                    : 'Duitku',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              if (state.currentUser != null)
+                Text(
+                  'Kelola keuanganmu dengan bijak',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.normal,
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withOpacity(0.6),
+                  ),
+                ),
+            ],
+          ),
           actions: [
             IconButton(
               tooltip: context.tr('Scan receipt'),
@@ -47,7 +75,7 @@ class DashboardPage extends StatelessWidget {
               tooltip: context.tr('Settings'),
               icon: const Icon(Icons.tune_rounded),
               onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const SettingsScaffold()),
+                AppPageRoute(builder: (_) => const SettingsScaffold()),
               ),
             ),
             const SizedBox(width: AppSpacing.xs),
@@ -135,7 +163,7 @@ class _SectionTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final muted =
-        Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5);
+        Theme.of(context).colorScheme.onSurface.withOpacity(0.5);
     return Row(
       children: [
         Expanded(
@@ -215,7 +243,7 @@ class _CategoryCard extends StatelessWidget {
                 color: Theme.of(context)
                     .colorScheme
                     .onSurface
-                    .withValues(alpha: 0.08),
+                    .withOpacity(0.08),
               ),
               const SizedBox(height: AppSpacing.md),
               DonutLegend(slices: slices, total: state.monthExpense),
@@ -249,6 +277,7 @@ class _BudgetCard extends StatefulWidget {
 class _BudgetCardState extends State<_BudgetCard> {
   Future<List<BudgetProgress>>? _future;
   int _revision = -1;
+  int _dataRev = -1;
 
   /// True until the first snapshot lands, successful or not, so the card can
   /// never stay behind a spinner.
@@ -268,16 +297,24 @@ class _BudgetCardState extends State<_BudgetCard> {
   }
 
   void _maybeReload({bool force = false}) {
-    final revision = widget.state.budgetsRevision;
-    if (!force && revision == _revision) return;
-    _revision = revision;
-    _future = widget.state.budgetProgress();
+    final state = widget.state;
+    // Two inputs: budget edits (budgetsRevision) and transaction edits —
+    // adding a single expense already changes how much of a cap is used, and
+    // that was invisible here before dataRevision existed.
+    if (!force &&
+        state.budgetsRevision == _revision &&
+        state.dataRevision == _dataRev) {
+      return;
+    }
+    _revision = state.budgetsRevision;
+    _dataRev = state.dataRevision;
+    _future = state.budgetProgress();
   }
 
   @override
   Widget build(BuildContext context) {
     final muted =
-        Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55);
+        Theme.of(context).colorScheme.onSurface.withOpacity(0.55);
     _maybeReload();
 
     return FutureBuilder<List<BudgetProgress>>(
@@ -317,7 +354,7 @@ class _BudgetCardState extends State<_BudgetCard> {
                     // because no named routes are registered, so the button did
                     // nothing at all when tapped.
                     onPressed: () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const BudgetEditor()),
+                      AppPageRoute(builder: (_) => const BudgetEditor()),
                     ),
                     icon: const Icon(Icons.add_rounded, size: 18),
                     label: Text(context.tr('Set a budget')),
@@ -349,7 +386,7 @@ class _BudgetCardState extends State<_BudgetCard> {
                     // Full page rather than the tab: the tab is behind the
                     // shell, and this button lives inside a pushed route.
                     onPressed: () => Navigator.of(context).push(
-                      MaterialPageRoute(
+                      AppPageRoute(
                         builder: (_) => const BudgetScaffold(),
                       ),
                     ),
@@ -375,7 +412,7 @@ class _BudgetRow extends StatelessWidget {
     final cat = progress.category;
     final icon = cat == null
         ? Icons.label_outline_rounded
-        : IconData(cat.iconCode, fontFamily: 'MaterialIcons');
+        : AppIcons.fromCode(cat.iconCode);
     return BudgetBar(
       label: context.tr(cat?.name ?? 'Uncategorized'),
       icon: icon,
@@ -394,7 +431,7 @@ class _RecentCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final muted =
-        Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55);
+        Theme.of(context).colorScheme.onSurface.withOpacity(0.55);
     final items = state.isDaily
         ? state.periodTransactions.take(8).toList()
         : state.recent;
@@ -450,7 +487,7 @@ class _RecentCard extends StatelessWidget {
 
   IconData _iconFor(Category? c) {
     if (c == null) return Icons.swap_horiz_rounded;
-    return IconData(c.iconCode, fontFamily: 'MaterialIcons');
+    return AppIcons.fromCode(c.iconCode);
   }
 
   Color _colorFor(Category? c) {

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import '../../core/transitions.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/app_icons.dart';
 import '../../core/formatters.dart';
 import '../../core/theme.dart';
 import '../../data/app_state.dart';
@@ -16,7 +18,7 @@ class WalletManager extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final muted =
-        Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55);
+        Theme.of(context).colorScheme.onSurface.withOpacity(0.55);
 
     return Scaffold(
       appBar: AppBar(title: Text(context.tr('Wallets'))),
@@ -36,7 +38,7 @@ class WalletManager extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(AppSpacing.lg),
             decoration: BoxDecoration(
-              color: AppColors.mint.withValues(alpha: 0.08),
+              color: AppColors.mint.withOpacity(0.08),
               borderRadius: BorderRadius.circular(AppRadius.lg),
             ),
             child: Row(
@@ -84,11 +86,11 @@ class WalletManager extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: AppColors.categorical[
                               w.colorIndex % AppColors.categorical.length]
-                          .withValues(alpha: 0.15),
+                          .withOpacity(0.15),
                       borderRadius: BorderRadius.circular(AppRadius.sm),
                     ),
                     child: Icon(
-                      Icons.wallet_rounded,
+                      AppIcons.wallet(w.name),
                       size: 19,
                       color: AppColors.categorical[
                           w.colorIndex % AppColors.categorical.length],
@@ -123,7 +125,7 @@ class WalletManager extends StatelessWidget {
 
   void _openEditor(BuildContext context, [Wallet? wallet]) {
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => WalletEditor(initial: wallet)),
+      AppPageRoute(builder: (_) => WalletEditor(initial: wallet)),
     );
   }
 }
@@ -175,7 +177,7 @@ class _WalletEditorState extends State<WalletEditor> {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final muted =
-        Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55);
+        Theme.of(context).colorScheme.onSurface.withOpacity(0.55);
 
     return Scaffold(
       appBar: AppBar(
@@ -310,7 +312,7 @@ class _WalletEditorState extends State<WalletEditor> {
       if (!mounted) return;
       setState(() => _saving = false);
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Could not save: $e')));
+          .showSnackBar(SnackBar(content: Text('${context.tr('Could not save')}: $e')));
     }
   }
 
@@ -329,7 +331,7 @@ class _WalletEditorState extends State<WalletEditor> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(backgroundColor: AppColors.expense),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
             child: Text(context.tr('Delete')),
           ),
         ],

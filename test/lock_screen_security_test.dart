@@ -101,10 +101,8 @@ void main() {
     expect(state.locked, isFalse, reason: 'the real passcode must work');
   });
 
-  testWidgets('Forgot? does NOT remove the passcode without proof',
+  testWidgets('Forgot? navigates to ForgotPinScreen and does NOT remove passcode without proof',
       (tester) async {
-    // The regression guard. Previously this path called setPin(null) +
-    // unlock() straight away.
     await state.setPin('4821');
     state.lock();
     await pumpLock(tester);
@@ -112,58 +110,21 @@ void main() {
     await tester.tap(find.text('Lupa sandi?'));
     await settle(tester);
 
-    // A confirmation step must appear, and it must ask for the passcode.
-    expect(find.text('Konfirmasi sandi kamu'), findsOneWidget,
-        reason: 'removing the passcode must require confirmation');
+    // Harus diarahkan ke halaman ForgotPinScreen dengan verifikasi email OTP
+    expect(find.text('Lupa PIN'), findsOneWidget,
+        reason: 'tapping forgot must navigate to ForgotPinScreen for email verification');
 
-    // Cancelling changes nothing.
-    await tester.tap(find.text('Batal'));
-    await settle(tester);
-
+    // Membuka halaman forgot tidak boleh membuka kunci aplikasi atau menghapus PIN
     expect(state.pinEnabled, isTrue, reason: 'the passcode must survive');
-    expect(state.locked, isTrue,
-        reason: 'cancelling must not open the app');
+    expect(state.locked, isTrue, reason: 'must not open the app without proof');
     expect(state.checkPin('4821'), isTrue,
         reason: 'the original passcode must still be valid');
-  });
 
-  testWidgets('Forgot? refuses a wrong passcode in the confirm step',
-      (tester) async {
-    await state.setPin('4821');
-    state.lock();
-    await pumpLock(tester);
-
-    await tester.tap(find.text('Lupa sandi?'));
+    // Menekan tombol kembali harus kembali ke LockScreen
+    await tester.tap(find.byType(IconButton).first);
     await settle(tester);
 
-    await tester.enterText(find.byType(TextField), '0000');
-    await tester.pump();
-    await tester.tap(find.text('Hapus'));
-    await settle(tester);
-
-    expect(state.pinEnabled, isTrue,
-        reason: 'a wrong passcode must not remove the lock');
-    expect(state.locked, isTrue, reason: 'and must not open the app');
-  });
-
-  testWidgets('Forgot? removes the passcode when the real one is given',
-      (tester) async {
-    // The legitimate path, so the check above is not simply blocking
-    // everything.
-    await state.setPin('4821');
-    state.lock();
-    await pumpLock(tester);
-
-    await tester.tap(find.text('Lupa sandi?'));
-    await settle(tester);
-
-    await tester.enterText(find.byType(TextField), '4821');
-    await tester.pump();
-    await tester.tap(find.text('Hapus'));
-    await settle(tester);
-    await settle(tester);
-
-    expect(state.pinEnabled, isFalse, reason: 'proof was given, so it clears');
-    expect(state.locked, isFalse);
+    expect(state.locked, isTrue);
+    expect(state.pinEnabled, isTrue);
   });
 }

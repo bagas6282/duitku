@@ -5,11 +5,6 @@ import '../../core/theme.dart';
 import '../../data/models/transaction.dart';
 import '../../core/strings.dart';
 
-/// One row in a transaction list.
-///
-/// The leading tile carries the category color, the title carries the note
-/// (falling back to the category name), and the trailing amount carries the
-/// sign — three separate channels so the row stays scannable at a glance.
 class TransactionTile extends StatelessWidget {
   const TransactionTile({
     super.key,
@@ -30,21 +25,23 @@ class TransactionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     final note = transaction.note;
     final title = (note != null && note.isNotEmpty)
         ? note
         : (transaction.isTransfer ? context.tr('Transfer') : categoryName);
 
-    final amountColor = switch (transaction.type) {
-      TxType.income => AppColors.mint,
-      TxType.expense => isDark
-          ? AppColors.textPrimaryDark
-          : AppColors.textPrimaryLight,
-      TxType.transfer => AppColors.info,
-    };
+    final isIncome   = transaction.type == TxType.income;
+    final isTransfer = transaction.type == TxType.transfer;
+
+    final amountColor = isIncome
+        ? AppColors.mint
+        : isTransfer
+            ? AppColors.info
+            : (isDark ? const Color(0xFFFF6B6B) : AppColors.danger);
+
+    final sign = isIncome ? '+' : isTransfer ? '' : '−';
 
     return InkWell(
       onTap: onTap,
@@ -56,16 +53,20 @@ class TransactionTile extends StatelessWidget {
         ),
         child: Row(
           children: [
+            // Icon kategori
             Container(
-              width: 40,
-              height: 40,
+              width: 44,
+              height: 44,
               decoration: BoxDecoration(
-                color: color.withValues(alpha: isDark ? 0.22 : 0.14),
+                color: color.withOpacity(isDark ? 0.18 : 0.12),
                 borderRadius: BorderRadius.circular(AppRadius.sm),
               ),
               child: Icon(icon, size: 20, color: color),
             ),
+
             const SizedBox(width: AppSpacing.md),
+
+            // Judul + meta
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -74,112 +75,43 @@ class TransactionTile extends StatelessWidget {
                     title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 15,
+                    style: TextStyle(
+                      fontSize:   14.5,
                       fontWeight: FontWeight.w600,
                       letterSpacing: -0.2,
+                      color: isDark ? AppColors.textHi : AppColors.textHiL,
                     ),
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 3),
                   Text(
                     '$categoryName · ${Formatters.dateShort(transaction.date)}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 12.5,
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
+                      fontSize: 12,
+                      color: isDark ? AppColors.textMuted : AppColors.textMutedL,
+                      fontWeight: FontWeight.w400,
                     ),
                   ),
                 ],
               ),
             ),
+
             const SizedBox(width: AppSpacing.sm),
+
+            // Nominal
             Text(
-              _signed(),
+              '$sign${Formatters.currency(transaction.amount)}',
               style: TextStyle(
-                fontSize: 15,
+                fontSize:   15,
                 fontWeight: FontWeight.w700,
                 letterSpacing: -0.3,
                 color: amountColor,
-                fontFeatures: const [FontFeature.tabularFigures()],
               ),
             ),
           ],
         ),
       ),
     );
-  }
-
-  String _signed() {
-    final v = _groupped(transaction.amount);
-    return switch (transaction.type) {
-      TxType.income => '+Rp$v',
-      TxType.expense => '-Rp$v',
-      TxType.transfer => 'Rp$v',
-    };
-  }
-
-  String _groupped(num value) {
-    final s = value.toStringAsFixed(0);
-    final buf = StringBuffer();
-    for (var i = 0; i < s.length; i++) {
-      if (i > 0 && (s.length - i) % 3 == 0) buf.write('.');
-      buf.write(s[i]);
-    }
-    return buf.toString();
-  }
-}
-
-/// Date separator shown between groups in the list.
-class DayHeader extends StatelessWidget {
-  const DayHeader({super.key, required this.label, required this.total});
-
-  final String label;
-  final num total;
-
-  @override
-  Widget build(BuildContext context) {
-    final muted =
-        Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55);
-    return Padding(
-      padding: const EdgeInsets.only(
-        top: AppSpacing.lg,
-        bottom: AppSpacing.sm,
-        left: AppSpacing.xs,
-      ),
-      child: Row(
-        children: [
-          Text(
-            label.toUpperCase(),
-            style: TextStyle(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.6,
-              color: muted,
-            ),
-          ),
-          const Spacer(),
-          Text(
-            '−Rp${_groupped(total)}',
-            style: TextStyle(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w600,
-              color: muted,
-              fontFeatures: const [FontFeature.tabularFigures()],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _groupped(num value) {
-    final s = value.toStringAsFixed(0);
-    final buf = StringBuffer();
-    for (var i = 0; i < s.length; i++) {
-      if (i > 0 && (s.length - i) % 3 == 0) buf.write('.');
-      buf.write(s[i]);
-    }
-    return buf.toString();
   }
 }

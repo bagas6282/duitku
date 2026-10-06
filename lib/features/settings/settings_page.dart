@@ -1,4 +1,5 @@
 import 'dart:io';
+import '../../core/transitions.dart';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -7,14 +8,15 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../core/csv.dart';
 import '../../core/formatters.dart';
+import '../../core/strings.dart';
 import '../../core/theme.dart';
 import '../../data/app_state.dart';
 import '../../data/models/transaction.dart';
+import '../../data/models/user.dart';
 import 'category_manager.dart';
 import 'passcode_setup.dart';
 import 'recurring_editor.dart';
 import 'wallet_manager.dart';
-import '../../core/strings.dart';
 
 /// Settings: appearance, security, data, and the record-keeping bits the
 /// report needs (wallets, categories, export).
@@ -42,6 +44,39 @@ class SettingsPage extends StatelessWidget {
               ),
         ),
         const SizedBox(height: AppSpacing.lg),
+        if (state.currentUser != null) ...[
+          _AccountCard(
+            user: state.currentUser!,
+            onLogout: () async {
+              final confirmed = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text('Keluar dari Akun?'),
+                  content: const Text(
+                    'Anda akan keluar dari akun ini. Data keuangan lokal tetap aman tersimpan di perangkat.',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: const Text('Batal'),
+                    ),
+                    FilledButton(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.danger,
+                      ),
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: const Text('Keluar'),
+                    ),
+                  ],
+                ),
+              );
+              if (confirmed == true) {
+                await state.logout();
+              }
+            },
+          ),
+          const SizedBox(height: AppSpacing.md),
+        ],
         _Section(context.tr('Appearance'), children: [
           _SegmentedRow(
             label: context.tr('Theme'),
@@ -80,7 +115,7 @@ class SettingsPage extends StatelessWidget {
             onChanged: (v) async {
               if (v) {
                 await Navigator.of(context).push(
-                  MaterialPageRoute(
+                  AppPageRoute(
                     builder: (_) => const PasscodeSetup(),
                   ),
                 );
@@ -107,7 +142,7 @@ class SettingsPage extends StatelessWidget {
             subtitle: '${state.wallets.length} accounts',
             icon: Icons.account_balance_wallet_outlined,
             onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const WalletManager()),
+              AppPageRoute(builder: (_) => const WalletManager()),
             ),
           ),
           _TapRow(
@@ -115,7 +150,7 @@ class SettingsPage extends StatelessWidget {
             subtitle: '${state.categories.length} buckets',
             icon: Icons.category_outlined,
             onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const CategoryManager()),
+              AppPageRoute(builder: (_) => const CategoryManager()),
             ),
           ),
           _TapRow(
@@ -123,7 +158,7 @@ class SettingsPage extends StatelessWidget {
             subtitle: '${state.recurring.length} rules',
             icon: Icons.repeat_rounded,
             onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const RecurringList()),
+              AppPageRoute(builder: (_) => const RecurringList()),
             ),
           ),
         ],),
@@ -160,13 +195,13 @@ class SettingsPage extends StatelessWidget {
           child: Column(
             children: [
               Text(
-                'Duitku 1.0.0',
+                'Duitku 1.5.4',
                 style: TextStyle(
                   fontSize: 12,
                   color: Theme.of(context)
                       .colorScheme
                       .onSurface
-                      .withValues(alpha: 0.4),
+                      .withOpacity(0.4),
                 ),
               ),
               const SizedBox(height: 4),
@@ -177,7 +212,7 @@ class SettingsPage extends StatelessWidget {
                   color: Theme.of(context)
                       .colorScheme
                       .onSurface
-                      .withValues(alpha: 0.32),
+                      .withOpacity(0.32),
                 ),
               ),
             ],
@@ -189,17 +224,22 @@ class SettingsPage extends StatelessWidget {
 
   Future<void> _export(BuildContext context, AppState state) async {
     final messenger = ScaffoldMessenger.of(context);
+    // Capture translations before the first await so they remain valid
+    // if the widget is unmounted while the export is in progress.
+    final subjectLabel = context.tr('Duitku backup');
+    final successMsg = context.tr('Backup ready to share');
+    final failMsg = context.tr('Export failed');
     try {
       final file = await state.exportBackup();
       await Share.shareXFiles(
         [XFile(file.path)],
-        subject: context.tr('Duitku backup'),
+        subject: subjectLabel,
       );
       messenger.showSnackBar(
-        SnackBar(content: Text(context.tr('Backup ready to share'))),
+        SnackBar(content: Text(successMsg)),
       );
     } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text('Export failed: $e')));
+      messenger.showSnackBar(SnackBar(content: Text('$failMsg: $e')));
     }
   }
 
@@ -234,48 +274,57 @@ class SettingsPage extends StatelessWidget {
     final path = result?.files.single.path;
     if (path == null) return;
 
+    // Capture translation before the restore await in case the widget unmounts.
+    final successMsg = context.tr('Backup restored');
+    final failMsg = context.tr('Import failed');
     try {
       await state.importBackup(File(path));
       messenger.showSnackBar(
-        SnackBar(content: Text(context.tr('Backup restored'))),
+        SnackBar(content: Text(successMsg)),
       );
     } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text('Import failed: $e')));
+      messenger.showSnackBar(SnackBar(content: Text('$failMsg: $e')));
     }
   }
 
   Future<void> _exportCsv(BuildContext context, AppState state) async {
     final messenger = ScaffoldMessenger.of(context);
-    try {
-      final rows = <List<String>>[
-        ['Date', 'Type', context.tr('Category'), context.tr('Wallet'), context.tr('Amount'), 'Note'],
-      ];
-      for (final t in state.transactions) {
-        rows.add([
-          Formatters.date(t.date),
-          t.type.name,
-          context.tr(state.categoryOf(t.categoryId)?.name ?? ''),
-          context.tr(state.walletOf(t.walletId)?.name ?? ''),
-          t.amount.toString(),
-          t.note ?? '',
-        ]);
-      }
-      // Names may contain commas or quotes; Csv.encode escapes them properly
-      // instead of mangling the text (and misaligning every column after it).
-      final csv = Csv.encode(rows);
+    // Build the translated header row and all data rows before the first await
+    // so context stays valid throughout. Rows are built from already-loaded
+    // state, so no DB round-trip is needed here.
+    final rows = <List<String>>[
+      ['Date', 'Type', context.tr('Category'), context.tr('Wallet'), context.tr('Amount'), 'Note'],
+    ];
+    for (final t in state.transactions) {
+      rows.add([
+        Formatters.date(t.date),
+        t.type.name,
+        context.tr(state.categoryOf(t.categoryId)?.name ?? ''),
+        context.tr(state.walletOf(t.walletId)?.name ?? ''),
+        t.amount.toString(),
+        t.note ?? '',
+      ]);
+    }
+    final csvSubject = context.tr('Duitku CSV');
+    final successMsg = context.tr('CSV ready to share');
+    final failMsg = context.tr('Export failed');
+    // Names may contain commas or quotes; Csv.encode escapes them properly
+    // instead of mangling the text (and misaligning every column after it).
+    final csv = Csv.encode(rows);
 
+    try {
       final dir = await state.getApplicationDocumentsDirectoryPath();
       final file = File(
         '$dir/duitku-${state.monthKey}.csv',
       );
       await file.writeAsString(csv);
-      await Share.shareXFiles([XFile(file.path)], subject: context.tr('Duitku CSV'));
+      await Share.shareXFiles([XFile(file.path)], subject: csvSubject);
 
       messenger.showSnackBar(
-        SnackBar(content: Text(context.tr('CSV ready to share'))),
+        SnackBar(content: Text(successMsg)),
       );
     } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text('Export failed: $e')));
+      messenger.showSnackBar(SnackBar(content: Text('$failMsg: $e')));
     }
   }
 
@@ -296,7 +345,7 @@ class SettingsPage extends StatelessWidget {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(backgroundColor: AppColors.expense),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
             child: Text(context.tr('Delete all')),
           ),
         ],
@@ -304,9 +353,10 @@ class SettingsPage extends StatelessWidget {
     );
     if (ok != true) return;
 
+    final successMsg = context.tr('All data deleted');
     await state.wipeEverything();
     messenger.showSnackBar(
-      SnackBar(content: Text(context.tr('All data deleted'))),
+      SnackBar(content: Text(successMsg)),
     );
   }
 }
@@ -320,7 +370,7 @@ class _Section extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final muted =
-        Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5);
+        Theme.of(context).colorScheme.onSurface.withOpacity(0.5);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -372,7 +422,7 @@ class _SwitchRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final muted =
-        Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5);
+        Theme.of(context).colorScheme.onSurface.withOpacity(0.5);
 
     return Opacity(
       opacity: enabled ? 1 : 0.45,
@@ -389,7 +439,6 @@ class _SwitchRow extends StatelessWidget {
         ),
         value: value,
         onChanged: enabled ? onChanged : null,
-        activeThumbColor: AppColors.mint,
       ),
     );
   }
@@ -413,8 +462,8 @@ class _TapRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final muted =
-        Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5);
-    final accent = danger ? AppColors.expense : muted;
+        Theme.of(context).colorScheme.onSurface.withOpacity(0.5);
+    final accent = danger ? AppColors.danger : muted;
 
     return ListTile(
       contentPadding: EdgeInsets.zero,
@@ -424,7 +473,7 @@ class _TapRow extends StatelessWidget {
         style: TextStyle(
           fontSize: 14.5,
           fontWeight: FontWeight.w600,
-          color: danger ? AppColors.expense : null,
+          color: danger ? AppColors.danger : null,
         ),
       ),
       subtitle: Text(
@@ -434,7 +483,7 @@ class _TapRow extends StatelessWidget {
       trailing: Icon(
         Icons.chevron_right_rounded,
         size: 20,
-        color: muted.withValues(alpha: 0.6),
+        color: muted.withOpacity(0.6),
       ),
       onTap: onTap,
     );
@@ -464,7 +513,7 @@ class _SegmentedRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
       child: Row(
         children: [
-          Icon(icon, size: 21, color: fg.withValues(alpha: 0.5)),
+          Icon(icon, size: 21, color: fg.withOpacity(0.5)),
           const SizedBox(width: AppSpacing.lg),
           Expanded(
             child: Text(
@@ -477,7 +526,7 @@ class _SegmentedRow extends StatelessWidget {
           ),
           Container(
             decoration: BoxDecoration(
-              color: fg.withValues(alpha: 0.05),
+              color: fg.withOpacity(0.05),
               borderRadius: BorderRadius.circular(AppRadius.pill),
             ),
             child: Row(
@@ -505,7 +554,7 @@ class _SegmentedRow extends StatelessWidget {
                           fontWeight: FontWeight.w700,
                           color: selectedIndex == i
                               ? Colors.white
-                              : fg.withValues(alpha: 0.6),
+                              : fg.withOpacity(0.6),
                         ),
                       ),
                     ),
@@ -530,14 +579,14 @@ class RecurringList extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final muted =
-        Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55);
+        Theme.of(context).colorScheme.onSurface.withOpacity(0.55);
 
     return Scaffold(
       appBar: AppBar(title: Text(context.tr('Recurring'))),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => const RecurringEditor()),
+          AppPageRoute(builder: (_) => const RecurringEditor()),
         ),
         icon: const Icon(Icons.add_rounded),
         label: Text(context.tr('New rule')),
@@ -589,7 +638,7 @@ class RecurringList extends StatelessWidget {
                   child: ListTile(
                     onTap: () => Navigator.push(
                       context,
-                      MaterialPageRoute(
+                      AppPageRoute(
                         builder: (_) => RecurringEditor(initial: r),
                       ),
                     ),
@@ -597,7 +646,7 @@ class RecurringList extends StatelessWidget {
                       backgroundColor: AppColors.categorical[
                               (cat?.colorIndex ?? 0) %
                                   AppColors.categorical.length]
-                          .withValues(alpha: 0.16),
+                          .withOpacity(0.16),
                       child: Icon(
                         r.type == TxType.income
                             ? Icons.south_west_rounded
@@ -605,7 +654,7 @@ class RecurringList extends StatelessWidget {
                         size: 18,
                         color: r.type == TxType.income
                             ? AppColors.mint
-                            : AppColors.expense,
+                            : AppColors.danger,
                       ),
                     ),
                     title: Text(
@@ -659,10 +708,11 @@ class RecurringList extends StatelessWidget {
                               ),
                             );
                             if (ok != true) return;
+                            final deletedMsg = context.tr('Recurring rule deleted');
                             await state.deleteRecurring(r.id);
                             messenger.showSnackBar(
                               SnackBar(
-                                content: Text(context.tr('Recurring rule deleted')),
+                                content: Text(deletedMsg),
                               ),
                             );
                           },
@@ -673,6 +723,79 @@ class RecurringList extends StatelessWidget {
                 );
               },
             ),
+    );
+  }
+}
+
+class _AccountCard extends StatelessWidget {
+  const _AccountCard({
+    required this.user,
+    required this.onLogout,
+  });
+
+  final UserModel user;
+  final VoidCallback onLogout;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.void2 : AppColors.frostCard,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDark ? Colors.white.withAlpha(15) : Colors.black.withAlpha(15),
+        ),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 24,
+            backgroundColor: AppColors.mint.withAlpha(40),
+            child: Text(
+              user.initials,
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+                color: AppColors.mint,
+              ),
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  user.name,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  user.email,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isDark ? AppColors.textMuted : AppColors.textMutedL,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.logout_rounded, color: AppColors.danger),
+            tooltip: 'Keluar',
+            onPressed: onLogout,
+          ),
+        ],
+      ),
     );
   }
 }

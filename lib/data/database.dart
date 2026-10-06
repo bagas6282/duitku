@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
@@ -34,6 +35,7 @@ class AppDatabase {
       onCreate: _create,
       onUpgrade: _migrate,
     );
+    await syncDefaultCategoryIcons(db);
     return AppDatabase._(db);
   }
 
@@ -46,6 +48,7 @@ class AppDatabase {
       onCreate: _create,
       onUpgrade: _migrate,
     );
+    await syncDefaultCategoryIcons(db);
     return AppDatabase._(db);
   }
 
@@ -152,6 +155,17 @@ class AppDatabase {
       )
     ''');
 
+    batch.execute('''
+      CREATE TABLE users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        email TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        avatar_url TEXT,
+        created_at INTEGER NOT NULL
+      )
+    ''');
+
     // Hot paths: month filtering, category rollups, wallet lookups.
     batch.execute(
       'CREATE INDEX idx_tx_occurred ON transactions (occurred_at DESC)',
@@ -164,6 +178,9 @@ class AppDatabase {
     );
     batch.execute(
       'CREATE INDEX idx_budget_month ON budgets (month_key)',
+    );
+    batch.execute(
+      'CREATE INDEX idx_users_email ON users (email)',
     );
 
     await batch.commit(noResult: true);
@@ -179,6 +196,19 @@ class AppDatabase {
         'UPDATE transactions SET created_at = occurred_at WHERE created_at = 0',
       );
     }
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        email TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        avatar_url TEXT,
+        created_at INTEGER NOT NULL
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_users_email ON users (email)',
+    );
   }
 
   /// Defaults for a fresh install: three wallets and a starter category set
@@ -187,9 +217,9 @@ class AppDatabase {
   ///
   /// Public because the reset-data path re-runs it after emptying the tables,
   /// so a wiped app still opens with usable defaults rather than nothing.
-  static Future<void> seedDefaults(Database db) => _seed(db);
+  static Future<void> seedDefaults(DatabaseExecutor db) => _seed(db);
 
-  static Future<void> _seed(Database db) async {
+  static Future<void> _seed(DatabaseExecutor db) async {
     final batch = db.batch();
 
     const wallets = [
@@ -206,20 +236,21 @@ class AppDatabase {
     }
 
     // Codepoints come from Icons.* so no icon font has to be bundled twice.
-    const categories = <(String, int, int, bool)>[
-      ('Food & Drink', 0xe56c, 0, false),
-      ('Transport', 0xe530, 1, false),
-      ('Tuition', 0xe80c, 3, false),
-      ('Books', 0xe865, 4, false),
-      ('Entertainment', 0xe40f, 5, false),
-      ('Health', 0xe548, 6, false),
-      ('Rent', 0xe88a, 2, false),
-      ('Shopping', 0xe8cc, 7, false),
-      ('Other', 0xe5d3, 1, false),
-      ('Salary', 0xe263, 0, true),
-      ('Allowance', 0xe8e5, 4, true),
-      ('Freelance', 0xe30a, 5, true),
-      ('Gift', 0xe8f6, 6, true),
+    // Names match the Indonesian labels in L (Health→Kesehatan, etc.).
+    final categories = <(String, int, int, bool)>[
+      ('Food & Drink', Icons.restaurant_rounded.codePoint, 0, false),
+      ('Transport', Icons.directions_car_rounded.codePoint, 1, false),
+      ('Tuition', Icons.school_rounded.codePoint, 3, false),
+      ('Books', Icons.menu_book_rounded.codePoint, 4, false),
+      ('Entertainment', Icons.movie_rounded.codePoint, 5, false),
+      ('Health', Icons.medical_services_rounded.codePoint, 6, false),
+      ('Rent', Icons.home_rounded.codePoint, 2, false),
+      ('Shopping', Icons.shopping_bag_rounded.codePoint, 7, false),
+      ('Other', Icons.more_horiz_rounded.codePoint, 1, false),
+      ('Salary', Icons.payments_rounded.codePoint, 0, true),
+      ('Allowance', Icons.savings_rounded.codePoint, 4, true),
+      ('Freelance', Icons.work_rounded.codePoint, 5, true),
+      ('Gift', Icons.card_giftcard_rounded.codePoint, 6, true),
     ];
     for (final (name, icon, color, income) in categories) {
       batch.insert('categories', {
@@ -239,6 +270,33 @@ class AppDatabase {
     });
 
     await batch.commit(noResult: true);
+  }
+
+  /// Rewrites default-category icons on every launch so an older install
+  /// (wrong glyph: folder, star, TV, question mark) picks up the remap
+  /// without wiping user data. Only rows that still use the seed names
+  /// are touched; a renamed category is left alone.
+  static Future<void> syncDefaultCategoryIcons(Database db) async {
+    final map = <String, int>{
+      'Food & Drink': Icons.restaurant_rounded.codePoint,
+      'Transport': Icons.directions_car_rounded.codePoint,
+      'Tuition': Icons.school_rounded.codePoint,
+      'Books': Icons.menu_book_rounded.codePoint,
+      'Health': Icons.medical_services_rounded.codePoint,
+      'Rent': Icons.home_rounded.codePoint,
+      'Shopping': Icons.shopping_bag_rounded.codePoint,
+      'Other': Icons.more_horiz_rounded.codePoint,
+      'Salary': Icons.payments_rounded.codePoint,
+      'Allowance': Icons.savings_rounded.codePoint,
+    };
+    for (final e in map.entries) {
+      await db.update(
+        'categories',
+        {'icon_code': e.value},
+        where: 'name = ?',
+        whereArgs: [e.key],
+      );
+    }
   }
 
   /// Full-file checkpoint before a destructive import.

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/transitions.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme.dart';
@@ -12,10 +13,6 @@ import '../transactions/transaction_editor.dart';
 import '../transactions/transactions_page.dart';
 import '../../core/strings.dart';
 
-/// Root scaffold: four tabs plus a centre action for recording a transaction.
-///
-/// The add button is a full-width bar above the navigation rather than a FAB —
-/// on a phone it is reachable one-handed and never covers the last list row.
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
 
@@ -25,38 +22,18 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   int _index = 0;
-
-  /// Whether the floating add button is showing.
-  ///
-  /// It slides out of the way while the user reads downwards and returns as
-  /// soon as they scroll back up, so it never sits on top of the last row of a
-  /// list the user is trying to reach.
   bool _fabVisible = true;
 
-  /// Notified by each tab's scroll view.
   bool _onScroll(ScrollNotification n) {
-    // Depth 0 only: the outer view. A notification from a nested horizontal
-    // list (the wallet chips, a chart) must not toggle the button.
     if (n.depth != 0) return false;
-
-    // A threshold rather than any delta: a fling arrives as many tiny updates,
-    // and reacting to each one made the button flicker mid-gesture.
-    if (n is ScrollUpdateNotification &&
-        n.metrics.axis == Axis.vertical) {
+    if (n is ScrollUpdateNotification && n.metrics.axis == Axis.vertical) {
       final delta = n.scrollDelta ?? 0;
-      if (delta > 6 && _fabVisible) {
-        setState(() => _fabVisible = false);
-      } else if (delta < -6 && !_fabVisible) {
-        setState(() => _fabVisible = true);
-      }
+      if (delta > 6 && _fabVisible)        setState(() => _fabVisible = false);
+      else if (delta < -6 && !_fabVisible) setState(() => _fabVisible = true);
     }
-    // Returning false keeps the notification travelling so RefreshIndicator and
-    // the app bar's own scroll behaviour still receive it.
     return false;
   }
 
-  /// Titles follow the selected language, so they are resolved per build
-  /// rather than stored once at construction.
   List<String> get _titles => [
         'Duitku',
         context.tr('Transactions'),
@@ -79,11 +56,6 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Only `paused` means the app actually left the foreground on Android.
-    // `inactive` also fires for in-app interruptions — the date picker, the
-    // biometric sheet, a permission prompt — and locking on it would demand
-    // a passcode in the middle of filling out a form. Hidden is a superset of
-    // paused on mobile, so pausing is enough.
     if (state == AppLifecycleState.paused) {
       context.read<AppState>().lock();
     }
@@ -91,7 +63,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 
   Future<void> _addTransaction() async {
     await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const TransactionEditor()),
+      AppPageRoute(builder: (_) => const TransactionEditor()),
     );
   }
 
@@ -115,7 +87,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                   tooltip: context.tr('Settings'),
                   icon: const Icon(Icons.tune_rounded),
                   onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const SettingsScaffold()),
+                    AppPageRoute(builder: (_) => const SettingsScaffold()),
                   ),
                 ),
                 const SizedBox(width: AppSpacing.xs),
@@ -127,74 +99,190 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       ),
       floatingActionButton: _ScrollReveal(
         visible: _fabVisible,
-        child: FloatingActionButton.extended(
-          heroTag: 'duitku-fab-add',
-          onPressed: _addTransaction,
-          backgroundColor: AppColors.mint,
-          foregroundColor: Colors.white,
-          icon: const Icon(Icons.add_rounded),
-          label: Text(
-            context.tr('Add'),
-            style: const TextStyle(fontWeight: FontWeight.w700),
-          ),
-        ),
+        child: _AddFab(onPressed: _addTransaction),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: (i) => setState(() => _index = i),
-        height: 66,
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        destinations: [
-          NavigationDestination(
-            icon: Icon(Icons.dashboard_outlined),
-            selectedIcon: Icon(Icons.dashboard_rounded),
-            label: context.tr('Home'),
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.receipt_long_outlined),
-            selectedIcon: Icon(Icons.receipt_long_rounded),
-            label: context.tr('History'),
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.pie_chart_outline_rounded),
-            selectedIcon: Icon(Icons.pie_chart_rounded),
-            label: context.tr('Budget'),
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.flag_outlined),
-            selectedIcon: Icon(Icons.flag_rounded),
-            label: context.tr('Goals'),
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.show_chart_rounded),
-            selectedIcon: Icon(Icons.insights_rounded),
-            label: context.tr('Insights'),
-          ),
-        ],
+      bottomNavigationBar: _BottomNav(
+        index: _index,
+        onTap: (i) => setState(() => _index = i),
       ),
     );
   }
 }
 
-/// Slides its child in and out on the vertical axis without unmounting it.
-///
-/// Kept mounted so the button's own Material state (ripple, focus) survives a
-/// scroll, and so a tap in progress is not cancelled by the animation.
+// ─── FAB premium ─────────────────────────────────────────────────────────────
+
+class _AddFab extends StatelessWidget {
+  const _AddFab({required this.onPressed});
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+        child: Ink(
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [AppColors.royal, AppColors.royalSoft],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(AppRadius.pill),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.royal.withOpacity(0.35),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.add_rounded, color: Colors.white, size: 20),
+                const SizedBox(width: 6),
+                Text(
+                  context.tr('Add'),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Bottom nav bar premium ───────────────────────────────────────────────────
+
+class _BottomNav extends StatelessWidget {
+  const _BottomNav({required this.index, required this.onTap});
+  final int index;
+  final ValueChanged<int> onTap;
+
+  static const _items = [
+    (Icons.grid_view_rounded,        Icons.grid_view_rounded,        'Beranda'),
+    (Icons.receipt_long_outlined,    Icons.receipt_long_rounded,     'Riwayat'),
+    (Icons.donut_large_outlined,     Icons.donut_large_rounded,      'Anggaran'),
+    (Icons.flag_outlined,            Icons.flag_rounded,             'Target'),
+    (Icons.show_chart_rounded,       Icons.insights_rounded,         'Grafik'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bg = isDark ? AppColors.void1 : AppColors.frostCard;
+    final border = isDark ? const Color(0xFF1A2036) : const Color(0xFFE4EAF8);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: bg,
+        border: Border(top: BorderSide(color: border, width: 1)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: 64,
+          child: Row(
+            children: List.generate(_items.length, (i) {
+              final (iconOff, iconOn, label) = _items[i];
+              final selected = i == index;
+              return Expanded(
+                child: GestureDetector(
+                  onTap: () => onTap(i),
+                  behavior: HitTestBehavior.opaque,
+                  child: _NavItem(
+                    icon:     selected ? iconOn : iconOff,
+                    label:    label,
+                    selected: selected,
+                    isDark:   isDark,
+                  ),
+                ),
+              );
+            }),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NavItem extends StatelessWidget {
+  const _NavItem({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.isDark,
+  });
+
+  final IconData icon;
+  final String   label;
+  final bool     selected;
+  final bool     isDark;
+
+  @override
+  Widget build(BuildContext context) {
+    final activeColor  = AppColors.royal;
+    final inactiveColor= isDark ? AppColors.textMuted : AppColors.textMutedL;
+    final color        = selected ? activeColor : inactiveColor;
+
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOutCubic,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          decoration: BoxDecoration(
+            color: selected
+                ? AppColors.royal.withOpacity(0.12)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(AppRadius.pill),
+          ),
+          child: Icon(icon, size: 22, color: color),
+        ),
+        const SizedBox(height: 2),
+        AnimatedDefaultTextStyle(
+          duration: const Duration(milliseconds: 180),
+          style: TextStyle(
+            fontSize:   10.5,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            color:      color,
+            letterSpacing: 0.1,
+          ),
+          child: Text(label),
+        ),
+      ],
+    );
+  }
+}
+
+// ─── FAB reveal on scroll ─────────────────────────────────────────────────────
+
 class _ScrollReveal extends StatelessWidget {
   const _ScrollReveal({required this.visible, required this.child});
-
   final bool visible;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
     return AnimatedSlide(
-      duration: const Duration(milliseconds: 200),
+      duration: const Duration(milliseconds: 220),
       curve: Curves.easeOutCubic,
-      offset: visible ? Offset.zero : const Offset(0, 1.4),
+      offset: visible ? Offset.zero : const Offset(0, 1.6),
       child: AnimatedOpacity(
-        duration: const Duration(milliseconds: 160),
+        duration: const Duration(milliseconds: 180),
         opacity: visible ? 1 : 0,
         child: IgnorePointer(ignoring: !visible, child: child),
       ),
@@ -202,7 +290,8 @@ class _ScrollReveal extends StatelessWidget {
   }
 }
 
-/// Settings pushed as its own route, complete with an app bar.
+// ─── Settings scaffold ────────────────────────────────────────────────────────
+
 class SettingsScaffold extends StatelessWidget {
   const SettingsScaffold({super.key});
 

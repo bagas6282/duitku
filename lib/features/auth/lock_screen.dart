@@ -5,6 +5,8 @@ import 'package:provider/provider.dart';
 import '../../core/theme.dart';
 import '../../data/app_state.dart';
 import '../../core/strings.dart';
+import '../../core/transitions.dart';
+import 'forgot_pin_screen.dart';
 
 /// Four-digit passcode gate shown before the app opens.
 ///
@@ -83,45 +85,10 @@ class _LockScreenState extends State<LockScreen> {
   /// passcode, or an enrolled fingerprint. Without this check anyone holding
   /// the phone could tap "Forgot?" and read every recorded transaction.
   Future<void> _forgot() async {
-    final state = context.read<AppState>();
-    final verified = await _verifyBeforeRemoval();
-    if (!verified || !mounted) return;
-
-    await state.setPin(null);
-    if (mounted) state.unlock();
-  }
-
-  /// True when the user proves they are the owner.
-  ///
-  /// Biometric is offered first (it is one tap), and the passcode is always
-  /// available as the fallback so a phone without a usable sensor is not a
-  /// dead end.
-  Future<bool> _verifyBeforeRemoval() async {
-    final state = context.read<AppState>();
-
-    // If biometrics are armed, try them first — nothing to type.
-    if (state.biometricEnabled) {
-      try {
-        final ok = await _auth.authenticate(
-          localizedReason: context.tr('Confirm it is you'),
-          options: const AuthenticationOptions(
-            biometricOnly: true,
-            stickyAuth: true,
-          ),
-        );
-        if (ok) return true;
-      } catch (_) {
-        // Fall through to the passcode prompt.
-      }
-      if (!mounted) return false;
-    }
-
-    // Otherwise ask for the current passcode.
-    final entered = await showDialog<String>(
-      context: context,
-      builder: (ctx) => const _ConfirmPasscodeDialog(),
+    // Navigate ke ForgotPinScreen untuk reset via email
+    Navigator.of(context).push(
+      AppPageRoute(builder: (_) => const ForgotPinScreen()),
     );
-    return entered != null && state.checkPin(entered);
   }
 
   @override
@@ -132,7 +99,7 @@ class _LockScreenState extends State<LockScreen> {
     final state = context.watch<AppState>();
 
     return Scaffold(
-      backgroundColor: isDark ? AppColors.ink : AppColors.paper,
+      backgroundColor: isDark ? AppColors.void1 : AppColors.frost,
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
@@ -146,7 +113,7 @@ class _LockScreenState extends State<LockScreen> {
                     width: 56,
                     height: 56,
                     decoration: BoxDecoration(
-                      color: AppColors.mint.withValues(alpha: 0.14),
+                      color: AppColors.mint.withOpacity(0.14),
                       borderRadius: BorderRadius.circular(AppRadius.md),
                     ),
                     child: const Icon(
@@ -170,7 +137,7 @@ class _LockScreenState extends State<LockScreen> {
                     context.tr('Your data stays on this device'),
                     style: TextStyle(
                       fontSize: 13,
-                      color: fg.withValues(alpha: 0.55),
+                      color: fg.withOpacity(0.55),
                     ),
                   ),
                   const SizedBox(height: AppSpacing.xxl),
@@ -186,7 +153,7 @@ class _LockScreenState extends State<LockScreen> {
                         decoration: BoxDecoration(
                           color: filled
                               ? AppColors.mint
-                              : fg.withValues(alpha: 0.16),
+                              : fg.withOpacity(0.16),
                           shape: BoxShape.circle,
                         ),
                       );
@@ -201,7 +168,7 @@ class _LockScreenState extends State<LockScreen> {
                             child: Text(
                               _error!,
                               style: const TextStyle(
-                                color: AppColors.expense,
+                                color: AppColors.danger,
                                 fontSize: 13,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -229,7 +196,7 @@ class _LockScreenState extends State<LockScreen> {
                         child: Text(
                           context.tr('Forgot passcode?'),
                           style: TextStyle(
-                            color: fg.withValues(alpha: 0.55),
+                            color: fg.withOpacity(0.55),
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -242,62 +209,6 @@ class _LockScreenState extends State<LockScreen> {
           ),
         ),
       ),
-    );
-  }
-}
-
-/// Asks for the current passcode and returns it, or null when cancelled.
-///
-/// Deliberately not reusing the on-screen keypad: this is a confirmation step,
-/// and a plain field makes it obvious that the passcode is being re-typed to
-/// authorise something, not to unlock.
-class _ConfirmPasscodeDialog extends StatefulWidget {
-  const _ConfirmPasscodeDialog();
-
-  @override
-  State<_ConfirmPasscodeDialog> createState() => _ConfirmPasscodeDialogState();
-}
-
-class _ConfirmPasscodeDialogState extends State<_ConfirmPasscodeDialog> {
-  final _controller = TextEditingController();
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _submit() {
-    final value = _controller.text.trim();
-    Navigator.pop(context, value.isEmpty ? null : value);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text(context.tr('Confirm your passcode')),
-      content: TextField(
-        controller: _controller,
-        autofocus: true,
-        obscureText: true,
-        keyboardType: TextInputType.number,
-        maxLength: 4,
-        decoration: InputDecoration(
-          counterText: '',
-          hintText: context.tr('Current passcode'),
-        ),
-        onSubmitted: (_) => _submit(),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context, null),
-          child: Text(context.tr('Cancel')),
-        ),
-        FilledButton(
-          onPressed: _submit,
-          child: Text(context.tr('Remove')),
-        ),
-      ],
     );
   }
 }
@@ -322,7 +233,7 @@ class _Keypad extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(6),
           child: Material(
-            color: fg.withValues(alpha: 0.05),
+            color: fg.withOpacity(0.05),
             borderRadius: BorderRadius.circular(AppRadius.md),
             child: InkWell(
               onTap: disabled ? null : (onTap ?? () => onDigit(label)),
@@ -369,7 +280,7 @@ class _Keypad extends StatelessWidget {
               child: Icon(
                 Icons.backspace_outlined,
                 size: 21,
-                color: fg.withValues(alpha: 0.7),
+                color: fg.withOpacity(0.7),
               ),
             ),
           ],

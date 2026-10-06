@@ -24,7 +24,7 @@ class CategoryDonut extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final muted =
-        Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55);
+        Theme.of(context).colorScheme.onSurface.withOpacity(0.55);
 
     if (slices.isEmpty) {
       return SizedBox(
@@ -120,7 +120,7 @@ class DonutLegend extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final muted =
-        Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55);
+        Theme.of(context).colorScheme.onSurface.withOpacity(0.55);
 
     return Column(
       children: [
@@ -202,7 +202,7 @@ class TrendBars extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final muted =
-        Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.45);
+        Theme.of(context).colorScheme.onSurface.withOpacity(0.45);
 
     if (points.isEmpty) {
       return SizedBox(
@@ -232,7 +232,7 @@ class TrendBars extends StatelessWidget {
             drawVerticalLine: false,
             horizontalInterval: safeMax / 4,
             getDrawingHorizontalLine: (_) => FlLine(
-              color: muted.withValues(alpha: 0.25),
+              color: muted.withOpacity(0.25),
               strokeWidth: 1,
               dashArray: [4, 4],
             ),
@@ -268,7 +268,7 @@ class TrendBars extends StatelessWidget {
           ),
           barTouchData: BarTouchData(
             touchTooltipData: BarTouchTooltipData(
-              getTooltipColor: (_) => AppColors.ink,
+              getTooltipColor: (_) => AppColors.void1,
               getTooltipItem: (group, _, rod, index) {
                 final p = points[group.x];
                 final isIncome = index == 0;
@@ -285,7 +285,7 @@ class TrendBars extends StatelessWidget {
                           ? 'In  ${_money(p.income)}'
                           : 'Out ${_money(p.expense)}',
                       style: TextStyle(
-                        color: isIncome ? AppColors.mint : AppColors.expense,
+                        color: isIncome ? AppColors.mint : AppColors.danger,
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
                       ),
@@ -311,7 +311,7 @@ class TrendBars extends StatelessWidget {
                   ),
                   BarChartRodData(
                     toY: points[i].expense.toDouble(),
-                    color: AppColors.expense,
+                    color: AppColors.danger,
                     width: 7,
                     borderRadius: const BorderRadius.vertical(
                       top: Radius.circular(4),

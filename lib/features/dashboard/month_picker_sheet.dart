@@ -38,7 +38,7 @@ class _MonthPickerSheetState extends State<MonthPickerSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final muted = theme.colorScheme.onSurface.withValues(alpha: 0.55);
+    final muted = theme.colorScheme.onSurface.withOpacity(0.55);
     final now = DateTime.now();
 
     return Container(
@@ -61,7 +61,7 @@ class _MonthPickerSheetState extends State<MonthPickerSheet> {
             width: 38,
             height: 4,
             decoration: BoxDecoration(
-              color: muted.withValues(alpha: 0.4),
+              color: muted.withOpacity(0.4),
               borderRadius: BorderRadius.circular(AppRadius.pill),
             ),
           ),
@@ -158,7 +158,7 @@ class _MonthCell extends StatelessWidget {
     return Material(
       color: selected
           ? AppColors.mint
-          : fg.withValues(alpha: isNow ? 0.10 : 0.05),
+          : fg.withOpacity(isNow ? 0.10 : 0.05),
       borderRadius: BorderRadius.circular(AppRadius.md),
       child: InkWell(
         onTap: onTap,

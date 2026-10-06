@@ -18,7 +18,8 @@ void main() {
       // not a missed translation: brand names, the word "Transfer", and the
       // month abbreviations Indonesia shares with English (Jan, Feb, Mar...).
       const identicalByDesign = {
-        'Duitku', 'English', 'MaterialIcons', 'Freelance', 'Duitku 1.0.0',
+        'Duitku', 'English', 'MaterialIcons', 'Freelance',
+        'Duitku 1.0.0', 'Duitku 1.5.4',
         'Duitku backup', 'Duitku CSV', 'Indonesia', 'Transfer',
         'Jan', 'Feb', 'Mar', 'Apr', 'Jun', 'Jul', 'Sep', 'Nov',
       };

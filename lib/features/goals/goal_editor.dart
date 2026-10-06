@@ -55,7 +55,7 @@ class _GoalEditorState extends State<GoalEditor> {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final theme = Theme.of(context);
-    final muted = theme.colorScheme.onSurface.withValues(alpha: 0.55);
+    final muted = theme.colorScheme.onSurface.withOpacity(0.55);
     final accent =
         AppColors.categorical[_colorIndex % AppColors.categorical.length];
 
@@ -115,7 +115,7 @@ class _GoalEditorState extends State<GoalEditor> {
             children: [
               Expanded(
                 child: Material(
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.05),
+                  color: theme.colorScheme.onSurface.withOpacity(0.05),
                   borderRadius: BorderRadius.circular(AppRadius.md),
                   child: InkWell(
                     borderRadius: BorderRadius.circular(AppRadius.md),
@@ -208,7 +208,7 @@ class _GoalEditorState extends State<GoalEditor> {
           Container(
             padding: const EdgeInsets.all(AppSpacing.lg),
             decoration: BoxDecoration(
-              color: accent.withValues(alpha: 0.08),
+              color: accent.withOpacity(0.08),
               borderRadius: BorderRadius.circular(AppRadius.md),
             ),
             child: Row(
@@ -218,7 +218,7 @@ class _GoalEditorState extends State<GoalEditor> {
                 Expanded(
                   child: Text(
                     _isEditing
-                        ? 'Saved so far: '
+                        ? '${context.tr('Saved so far')}: '
                             '${Formatters.currency(widget.initial!.savedAmount)}'
                         : context.tr('Add money to this goal any time from the Goals tab.'),
                     style: TextStyle(fontSize: 12.5, color: muted, height: 1.4),
@@ -272,7 +272,7 @@ class _GoalEditorState extends State<GoalEditor> {
       if (!mounted) return;
       setState(() => _saving = false);
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Could not save: $e')));
+          .showSnackBar(SnackBar(content: Text('${context.tr('Could not save')}: $e')));
     }
   }
 
@@ -289,7 +289,7 @@ class _GoalEditorState extends State<GoalEditor> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(backgroundColor: AppColors.expense),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
             child: Text(context.tr('Delete')),
           ),
         ],
@@ -347,7 +347,7 @@ class _PaceHint extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
-        color: AppColors.info.withValues(alpha: 0.08),
+        color: AppColors.info.withOpacity(0.08),
         borderRadius: BorderRadius.circular(AppRadius.md),
       ),
       child: Row(

@@ -30,7 +30,7 @@ class BudgetBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final muted = theme.colorScheme.onSurface.withValues(alpha: 0.55);
+    final muted = theme.colorScheme.onSurface.withOpacity(0.55);
     final fill = AppColors.forRatio(rawRatio);
     final catColor =
         AppColors.categorical[colorIndex % AppColors.categorical.length];
@@ -61,7 +61,7 @@ class BudgetBar extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 12.5,
                   fontWeight: FontWeight.w600,
-                  color: over ? AppColors.expense : muted,
+                  color: over ? AppColors.danger : muted,
                   fontFeatures: const [FontFeature.tabularFigures()],
                 ),
               ),
@@ -77,7 +77,7 @@ class BudgetBar extends StatelessWidget {
               builder: (context, value, _) => LinearProgressIndicator(
                 value: value,
                 minHeight: 7,
-                backgroundColor: muted.withValues(alpha: 0.16),
+                backgroundColor: muted.withOpacity(0.16),
                 valueColor: AlwaysStoppedAnimation(fill),
               ),
             ),
@@ -90,7 +90,7 @@ class BudgetBar extends StatelessWidget {
             style: TextStyle(
               fontSize: 11.5,
               fontWeight: FontWeight.w500,
-              color: over ? AppColors.expense : muted,
+              color: over ? AppColors.danger : muted,
             ),
           ),
         ],
@@ -133,7 +133,7 @@ class StatChip extends StatelessWidget {
         vertical: AppSpacing.sm,
       ),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: isDark ? 0.16 : 0.10),
+        color: color.withOpacity(isDark ? 0.16 : 0.10),
         borderRadius: BorderRadius.circular(AppRadius.pill),
       ),
       child: Row(
@@ -148,7 +148,7 @@ class StatChip extends StatelessWidget {
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w500,
-              color: color.withValues(alpha: 0.85),
+              color: color.withOpacity(0.85),
             ),
           ),
           Text(

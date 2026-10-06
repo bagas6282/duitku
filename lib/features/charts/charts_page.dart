@@ -25,90 +25,96 @@ class _ChartsPageState extends State<ChartsPage> {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final theme = Theme.of(context);
-    final muted = theme.colorScheme.onSurface.withValues(alpha: 0.55);
+    final muted = theme.colorScheme.onSurface.withOpacity(0.55);
 
-    return ListView(
+    // Built as a list first so the scroll view can construct cards on
+    // demand: five charts inflated at once made switching to this tab hitch
+    // on low-end devices, while only two are ever on screen.
+    final cards = <Widget>[
+      Row(
+        children: [
+          Text(
+            context.tr('Insights'),
+            style: theme.textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.6,
+            ),
+          ),
+          const Spacer(),
+          TextButton.icon(
+            onPressed: () => showMonthPicker(context),
+            icon: const Icon(Icons.calendar_month_rounded, size: 17),
+            label: Text(Formatters.monthYear(state.month)),
+            style: TextButton.styleFrom(
+              foregroundColor: muted,
+              textStyle: const TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: AppSpacing.lg),
+      _Card(
+        title: context.tr('This month'),
+        child: Row(
+          children: [
+            _BigStat(
+              label: 'In',
+              value: state.monthIncome,
+              color: AppColors.mint,
+            ),
+            _BigStat(
+              label: 'Out',
+              value: state.monthExpense,
+              color: AppColors.danger,
+            ),
+            _BigStat(
+              label: context.tr('Net'),
+              value: state.monthNet,
+              color: state.monthNet >= 0
+                  ? AppColors.mint
+                  : AppColors.danger,
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: AppSpacing.md),
+      _Card(
+        title: context.tr('Category breakdown'),
+        child: _Breakdown(state: state),
+      ),
+      const SizedBox(height: AppSpacing.md),
+      _Card(
+        title: context.tr('Daily flow'),
+        child: _DailyFlow(transactions: state.transactions),
+      ),
+      const SizedBox(height: AppSpacing.md),
+      _Card(
+        title: context.tr('Month by month'),
+        trailing: _RangeToggle(
+          value: _range,
+          onChanged: (v) => setState(() => _range = v),
+        ),
+        child: _Trend(state: state, months: _range),
+      ),
+      const SizedBox(height: AppSpacing.md),
+      _Card(
+        title: context.tr('Top spending days'),
+        child: _TopDays(transactions: state.transactions),
+      ),
+    ];
+
+    return ListView.builder(
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.lg,
         AppSpacing.md,
         AppSpacing.lg,
         120,
       ),
-      children: [
-        Row(
-          children: [
-            Text(
-              context.tr('Insights'),
-              style: theme.textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-                letterSpacing: -0.6,
-              ),
-            ),
-            const Spacer(),
-            TextButton.icon(
-              onPressed: () => showMonthPicker(context),
-              icon: const Icon(Icons.calendar_month_rounded, size: 17),
-              label: Text(Formatters.monthYear(state.month)),
-              style: TextButton.styleFrom(
-                foregroundColor: muted,
-                textStyle: const TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: AppSpacing.lg),
-        _Card(
-          title: context.tr('This month'),
-          child: Row(
-            children: [
-              _BigStat(
-                label: 'In',
-                value: state.monthIncome,
-                color: AppColors.mint,
-              ),
-              _BigStat(
-                label: 'Out',
-                value: state.monthExpense,
-                color: AppColors.expense,
-              ),
-              _BigStat(
-                label: context.tr('Net'),
-                value: state.monthNet,
-                color: state.monthNet >= 0
-                    ? AppColors.mint
-                    : AppColors.expense,
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: AppSpacing.md),
-        _Card(
-          title: context.tr('Category breakdown'),
-          child: _Breakdown(state: state),
-        ),
-        const SizedBox(height: AppSpacing.md),
-        _Card(
-          title: context.tr('Daily flow'),
-          child: _DailyFlow(transactions: state.transactions),
-        ),
-        const SizedBox(height: AppSpacing.md),
-        _Card(
-          title: context.tr('Month by month'),
-          trailing: _RangeToggle(
-            value: _range,
-            onChanged: (v) => setState(() => _range = v),
-          ),
-          child: _Trend(state: state, months: _range),
-        ),
-        const SizedBox(height: AppSpacing.md),
-        _Card(
-          title: context.tr('Top spending days'),
-          child: _TopDays(transactions: state.transactions),
-        ),
-      ],
+      itemCount: cards.length,
+      itemBuilder: (context, i) => cards[i],
     );
   }
 }
@@ -144,7 +150,10 @@ class _Card extends StatelessWidget {
               ],
             ),
             const SizedBox(height: AppSpacing.lg),
-            child,
+            // Charts are the most expensive thing here to paint: a boundary
+            // caches each card's layer so scrolling the list moves picture
+            // layers around instead of re-rasterising every chart.
+            RepaintBoundary(child: child),
           ],
         ),
       ),
@@ -166,7 +175,7 @@ class _BigStat extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final muted =
-        Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5);
+        Theme.of(context).colorScheme.onSurface.withOpacity(0.5);
     return Expanded(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -255,7 +264,7 @@ class _DailyFlow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final muted = theme.colorScheme.onSurface.withValues(alpha: 0.5);
+    final muted = theme.colorScheme.onSurface.withOpacity(0.5);
 
     if (transactions.isEmpty) {
       return Text(
@@ -294,7 +303,7 @@ class _DailyFlow extends StatelessWidget {
             drawVerticalLine: false,
             horizontalInterval: ((maxY - minY + pad * 2) / 4).clamp(1, 1e9),
             getDrawingHorizontalLine: (_) => FlLine(
-              color: theme.colorScheme.onSurface.withValues(alpha: 0.06),
+              color: theme.colorScheme.onSurface.withOpacity(0.06),
               strokeWidth: 1,
             ),
           ),
@@ -358,8 +367,8 @@ class _DailyFlow extends StatelessWidget {
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    AppColors.mint.withValues(alpha: 0.26),
-                    AppColors.mint.withValues(alpha: 0.0),
+                    AppColors.mint.withOpacity(0.26),
+                    AppColors.mint.withOpacity(0.0),
                   ],
                 ),
               ),
@@ -382,7 +391,7 @@ class _RangeToggle extends StatelessWidget {
     final fg = Theme.of(context).colorScheme.onSurface;
     return Container(
       decoration: BoxDecoration(
-        color: fg.withValues(alpha: 0.06),
+        color: fg.withOpacity(0.06),
         borderRadius: BorderRadius.circular(AppRadius.pill),
       ),
       child: Row(
@@ -408,7 +417,7 @@ class _RangeToggle extends StatelessWidget {
                     fontWeight: FontWeight.w700,
                     color: value == m
                         ? Colors.white
-                        : fg.withValues(alpha: 0.6),
+                        : fg.withOpacity(0.6),
                   ),
                 ),
               ),
@@ -451,7 +460,9 @@ class _TrendState extends State<_Trend> {
       widget.months,
       widget.state.month.year,
       widget.state.month.month,
-      widget.state.transactions.length,
+      // Row count alone misses edits that don't change it (retyping an
+      // amount), which left the trend bars showing last month's numbers.
+      widget.state.dataRevision,
     );
     if (key == _key && _future != null) return;
     _key = key;
@@ -461,7 +472,7 @@ class _TrendState extends State<_Trend> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final muted = theme.colorScheme.onSurface.withValues(alpha: 0.5);
+    final muted = theme.colorScheme.onSurface.withOpacity(0.5);
     _maybeReload();
 
     return FutureBuilder<List<MonthlyTotal>>(
@@ -504,7 +515,7 @@ class _TrendState extends State<_Trend> {
                     drawVerticalLine: false,
                     horizontalInterval: maxValue <= 0 ? 1 : maxValue / 3,
                     getDrawingHorizontalLine: (_) => FlLine(
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.06),
+                      color: theme.colorScheme.onSurface.withOpacity(0.06),
                       strokeWidth: 1,
                     ),
                   ),
@@ -567,7 +578,7 @@ class _TrendState extends State<_Trend> {
                           ),
                           BarChartRodData(
                             toY: data[i].expense.toDouble(),
-                            color: AppColors.expense,
+                            color: AppColors.danger,
                             width: 8,
                             borderRadius: const BorderRadius.vertical(
                               top: Radius.circular(4),
@@ -585,7 +596,7 @@ class _TrendState extends State<_Trend> {
               children: [
                 _LegendDot(color: AppColors.mint, label: context.tr('Income')),
                 SizedBox(width: AppSpacing.lg),
-                _LegendDot(color: AppColors.expense, label: context.tr('Expense')),
+                _LegendDot(color: AppColors.danger, label: context.tr('Expense')),
               ],
             ),
           ],
@@ -604,7 +615,7 @@ class _LegendDot extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final muted =
-        Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6);
+        Theme.of(context).colorScheme.onSurface.withOpacity(0.6);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -628,7 +639,7 @@ class _TopDays extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final muted =
-        Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55);
+        Theme.of(context).colorScheme.onSurface.withOpacity(0.55);
 
     final byDay = <String, num>{};
     final dayOf = <String, DateTime>{};
@@ -681,9 +692,9 @@ class _TopDays extends StatelessWidget {
                         value: v,
                         minHeight: 6,
                         backgroundColor:
-                            theme.colorScheme.onSurface.withValues(alpha: 0.07),
+                            theme.colorScheme.onSurface.withOpacity(0.07),
                         valueColor:
-                            const AlwaysStoppedAnimation(AppColors.expense),
+                            const AlwaysStoppedAnimation(AppColors.danger),
                       ),
                     ),
                   ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/app_icons.dart';
 import '../../core/formatters.dart';
 import '../../core/money_input.dart';
 import '../../core/theme.dart';
@@ -94,13 +95,13 @@ class _TransactionEditorState extends State<TransactionEditor> {
   }
 
   Color get _accent =>
-      _type == TxType.income ? AppColors.mint : AppColors.expense;
+      _type == TxType.income ? AppColors.mint : AppColors.danger;
 
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final theme = Theme.of(context);
-    final muted = theme.colorScheme.onSurface.withValues(alpha: 0.55);
+    final muted = theme.colorScheme.onSurface.withOpacity(0.55);
 
     final wallets = state.wallets;
     final categories = state.categoriesFor(_type);
@@ -157,7 +158,7 @@ class _TransactionEditorState extends State<TransactionEditor> {
             boxShadow: _parsedAmount > 0
                 ? [
                     BoxShadow(
-                      color: _accent.withValues(alpha: 0.35),
+                      color: _accent.withOpacity(0.35),
                       blurRadius: 12,
                       offset: const Offset(0, 4),
                     ),
@@ -174,7 +175,7 @@ class _TransactionEditorState extends State<TransactionEditor> {
                   : theme.colorScheme.surfaceContainerHighest,
               foregroundColor: _parsedAmount > 0
                   ? Colors.white
-                  : theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                  : theme.colorScheme.onSurface.withOpacity(0.7),
               minimumSize: const Size.fromHeight(52),
               elevation: 0,
             ),
@@ -192,9 +193,9 @@ class _TransactionEditorState extends State<TransactionEditor> {
                     children: [
                       Icon(
                         _parsedAmount > 0
-                            ? Icons.check_circle_rounded
-                            : Icons.arrow_upward_rounded,
-                        size: 18,
+                            ? Icons.check_rounded
+                            : Icons.add_rounded,
+                        size: 20,
                       ),
                       const SizedBox(width: AppSpacing.sm),
                       Text(
@@ -232,9 +233,9 @@ class _TransactionEditorState extends State<TransactionEditor> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 decoration: BoxDecoration(
-                  color: _accent.withValues(alpha: 0.1),
+                  color: _accent.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(AppRadius.md),
-                  border: Border.all(color: _accent.withValues(alpha: 0.28)),
+                  border: Border.all(color: _accent.withOpacity(0.28)),
                 ),
                 child: Row(
                   children: [
@@ -264,7 +265,7 @@ class _TransactionEditorState extends State<TransactionEditor> {
                             context.tr('Snap a photo to fill amount & merchant'),
                             style: TextStyle(
                               fontSize: 11.5,
-                              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                              color: theme.colorScheme.onSurface.withOpacity(0.6),
                             ),
                           ),
                         ],
@@ -287,9 +288,9 @@ class _TransactionEditorState extends State<TransactionEditor> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                   decoration: BoxDecoration(
-                    color: _accent.withValues(alpha: 0.12),
+                    color: _accent.withOpacity(0.12),
                     borderRadius: BorderRadius.circular(AppRadius.pill),
-                    border: Border.all(color: _accent.withValues(alpha: 0.25)),
+                    border: Border.all(color: _accent.withOpacity(0.25)),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -337,14 +338,14 @@ class _TransactionEditorState extends State<TransactionEditor> {
             ),
             const SizedBox(height: AppSpacing.xl),
           ],
-          _Label('Date', muted: muted),
+          _Label(context.tr('Date'), muted: muted),
           const SizedBox(height: AppSpacing.sm),
           _DateRow(
             date: _date,
             onChanged: (d) => setState(() => _date = d),
           ),
           const SizedBox(height: AppSpacing.xl),
-          _Label('Note', muted: muted),
+          _Label(context.tr('Note'), muted: muted),
           const SizedBox(height: AppSpacing.sm),
           TextField(
             controller: _note,
@@ -352,8 +353,8 @@ class _TransactionEditorState extends State<TransactionEditor> {
             maxLines: 2,
             minLines: 1,
             textCapitalization: TextCapitalization.sentences,
-            decoration: const InputDecoration(
-              hintText: 'Optional — what was this for?',
+            decoration: InputDecoration(
+              hintText: context.tr('Optional — what was this for?'),
               counterText: '',
             ),
           ),
@@ -394,7 +395,7 @@ class _TransactionEditorState extends State<TransactionEditor> {
                 leading: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: _accent.withValues(alpha: 0.12),
+                    color: _accent.withOpacity(0.12),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(Icons.camera_alt_rounded, color: _accent),
@@ -407,7 +408,7 @@ class _TransactionEditorState extends State<TransactionEditor> {
                 leading: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: _accent.withValues(alpha: 0.12),
+                    color: _accent.withOpacity(0.12),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(Icons.photo_library_rounded, color: _accent),
@@ -615,7 +616,7 @@ class _TransactionEditorState extends State<TransactionEditor> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(backgroundColor: AppColors.expense),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
             child: Text(context.tr('Delete')),
           ),
         ],
@@ -697,7 +698,7 @@ class _TypeToggle extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
-                  color: active ? Colors.white : fg.withValues(alpha: 0.65),
+                  color: active ? Colors.white : fg.withOpacity(0.65),
                 ),
               ),
             ),
@@ -708,12 +709,12 @@ class _TypeToggle extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: fg.withValues(alpha: 0.06),
+        color: fg.withOpacity(0.06),
         borderRadius: BorderRadius.circular(AppRadius.md),
       ),
       child: Row(
         children: [
-          seg(TxType.expense, context.tr('Expense'), AppColors.expense),
+          seg(TxType.expense, context.tr('Expense'), AppColors.danger),
           seg(TxType.income, context.tr('Income'), AppColors.mint),
         ],
       ),
@@ -770,7 +771,7 @@ class _AmountField extends StatelessWidget {
               hintStyle: TextStyle(
                 fontSize: 34,
                 fontWeight: FontWeight.w700,
-                color: fg.withValues(alpha: 0.22),
+                color: fg.withOpacity(0.22),
                 letterSpacing: -1,
               ),
               border: InputBorder.none,
@@ -806,7 +807,7 @@ class _CategoryGrid extends StatelessWidget {
         context.tr('No categories for this type yet.'),
         style: TextStyle(
           fontSize: 13,
-          color: fg.withValues(alpha: 0.5),
+          color: fg.withOpacity(0.5),
         ),
       );
     }
@@ -828,8 +829,8 @@ class _CategoryGrid extends StatelessWidget {
                 color: selectedId == c.id
                     ? AppColors
                         .categorical[c.colorIndex % AppColors.categorical.length]
-                        .withValues(alpha: 0.18)
-                    : fg.withValues(alpha: 0.05),
+                        .withOpacity(0.18)
+                    : fg.withOpacity(0.05),
                 borderRadius: BorderRadius.circular(AppRadius.md),
                 border: Border.all(
                   color: selectedId == c.id
@@ -842,7 +843,7 @@ class _CategoryGrid extends StatelessWidget {
               child: Row(
                 children: [
                   Icon(
-                    IconData(c.iconCode, fontFamily: 'MaterialIcons'),
+                    AppIcons.fromCode(c.iconCode),
                     size: 16,
                     color: AppColors
                         .categorical[c.colorIndex % AppColors.categorical.length],
@@ -893,20 +894,27 @@ class _WalletRow extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
               decoration: BoxDecoration(
                 color: selectedId == w.id
-                    ? accent.withValues(alpha: 0.16)
-                    : fg.withValues(alpha: 0.05),
+                    ? accent.withOpacity(0.16)
+                    : fg.withOpacity(0.05),
                 borderRadius: BorderRadius.circular(AppRadius.md),
                 border: Border.all(
                   color: selectedId == w.id ? accent : Colors.transparent,
                   width: 1.4,
                 ),
               ),
-              child: Text(
-                context.tr(w.name),
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(AppIcons.wallet(w.name), size: 16),
+                  const SizedBox(width: 6),
+                  Text(
+                    context.tr(w.name),
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -946,7 +954,7 @@ class _DateRow extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Material(
-          color: fg.withValues(alpha: 0.05),
+          color: fg.withOpacity(0.05),
           borderRadius: BorderRadius.circular(AppRadius.md),
           child: InkWell(
             onTap: pick,
@@ -961,7 +969,7 @@ class _DateRow extends StatelessWidget {
                   Icon(
                     Icons.calendar_today_rounded,
                     size: 17,
-                    color: fg.withValues(alpha: 0.6),
+                    color: fg.withOpacity(0.6),
                   ),
                   const SizedBox(width: AppSpacing.sm),
                   Expanded(
@@ -1026,8 +1034,8 @@ class _QuickDay extends StatelessWidget {
 
     return Material(
       color: active
-          ? AppColors.mint.withValues(alpha: 0.16)
-          : fg.withValues(alpha: 0.05),
+          ? AppColors.mint.withOpacity(0.16)
+          : fg.withOpacity(0.05),
       borderRadius: BorderRadius.circular(AppRadius.md),
       child: InkWell(
         onTap: onTap,
@@ -1042,7 +1050,7 @@ class _QuickDay extends StatelessWidget {
             style: TextStyle(
               fontSize: 12.5,
               fontWeight: FontWeight.w600,
-              color: active ? AppColors.mint : fg.withValues(alpha: 0.7),
+              color: active ? AppColors.mint : fg.withOpacity(0.7),
             ),
           ),
         ),

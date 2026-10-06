@@ -112,17 +112,17 @@ void main() {
     await tester.pumpAndSettle();
 
     // Verify both toggle buttons exist
-    expect(find.text('Harian (Per Tanggal)'), findsOneWidget);
-    expect(find.text('Bulanan (Per Bulan)'), findsOneWidget);
+    expect(find.text('Harian'), findsOneWidget);
+    expect(find.text('Bulanan'), findsOneWidget);
 
     // Tap Harian
-    await tester.tap(find.text('Harian (Per Tanggal)'));
+    await tester.tap(find.text('Harian'));
     await tester.pumpAndSettle();
 
     expect(state.isDaily, isTrue);
 
     // Tap Bulanan
-    await tester.tap(find.text('Bulanan (Per Bulan)'));
+    await tester.tap(find.text('Bulanan'));
     await tester.pumpAndSettle();
 
     expect(state.isDaily, isFalse);

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import '../../core/transitions.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/app_icons.dart';
 import '../../core/theme.dart';
 import '../../data/app_state.dart';
 import '../../data/models/category.dart';
@@ -21,8 +23,13 @@ class CategoryManager extends StatelessWidget {
     Icons.bolt_rounded,
     Icons.wifi_rounded,
     Icons.phone_android_rounded,
+    Icons.medical_services_rounded,
     Icons.health_and_safety_rounded,
     Icons.school_rounded,
+    Icons.menu_book_rounded,
+    Icons.more_horiz_rounded,
+    Icons.payments_rounded,
+    Icons.savings_rounded,
     Icons.sports_esports_rounded,
     Icons.movie_rounded,
     Icons.fitness_center_rounded,
@@ -39,7 +46,7 @@ class CategoryManager extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final muted =
-        Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55);
+        Theme.of(context).colorScheme.onSurface.withOpacity(0.55);
     final expenses = state.categories.where((c) => !c.isIncome).toList();
     final incomes = state.categories.where((c) => c.isIncome).toList();
 
@@ -70,7 +77,7 @@ class CategoryManager extends StatelessWidget {
 
   void _open(BuildContext context) {
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const CategoryEditor()),
+      AppPageRoute(builder: (_) => const CategoryEditor()),
     );
   }
 }
@@ -133,11 +140,11 @@ class _CategoryTile extends StatelessWidget {
             width: 38,
             height: 38,
             decoration: BoxDecoration(
-              color: accent.withValues(alpha: 0.15),
+              color: accent.withOpacity(0.15),
               borderRadius: BorderRadius.circular(AppRadius.sm),
             ),
             child: Icon(
-              IconData(category.iconCode, fontFamily: 'MaterialIcons'),
+              AppIcons.fromCode(category.iconCode),
               size: 18,
               color: accent,
             ),
@@ -154,7 +161,7 @@ class _CategoryTile extends StatelessWidget {
               color: Theme.of(context)
                   .colorScheme
                   .onSurface
-                  .withValues(alpha: 0.4),
+                  .withOpacity(0.4),
             ),
             onPressed: () => _confirmArchive(context, state),
           ),
@@ -212,7 +219,7 @@ class _CategoryEditorState extends State<CategoryEditor> {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final muted =
-        Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55);
+        Theme.of(context).colorScheme.onSurface.withOpacity(0.55);
     final accent = _isIncome
         ? AppColors.mint
         : AppColors.categorical[_colorIndex % AppColors.categorical.length];
@@ -227,7 +234,7 @@ class _CategoryEditorState extends State<CategoryEditor> {
               color: Theme.of(context)
                   .colorScheme
                   .onSurface
-                  .withValues(alpha: 0.06),
+                  .withOpacity(0.06),
               borderRadius: BorderRadius.circular(AppRadius.md),
             ),
             child: Row(
@@ -235,7 +242,7 @@ class _CategoryEditorState extends State<CategoryEditor> {
                 _DirectionTab(
                   label: context.tr('Expense'),
                   active: !_isIncome,
-                  color: AppColors.expense,
+                  color: AppColors.danger,
                   onTap: () => setState(() => _isIncome = false),
                 ),
                 _DirectionTab(
@@ -291,11 +298,11 @@ class _CategoryEditorState extends State<CategoryEditor> {
                     height: 44,
                     decoration: BoxDecoration(
                       color: _iconCode == icon.codePoint
-                          ? accent.withValues(alpha: 0.18)
+                          ? accent.withOpacity(0.18)
                           : Theme.of(context)
                               .colorScheme
                               .onSurface
-                              .withValues(alpha: 0.05),
+                              .withOpacity(0.05),
                       borderRadius: BorderRadius.circular(AppRadius.sm),
                       border: Border.all(
                         color: _iconCode == icon.codePoint
@@ -387,7 +394,7 @@ class _CategoryEditorState extends State<CategoryEditor> {
       if (!mounted) return;
       setState(() => _saving = false);
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Could not save: $e')));
+          .showSnackBar(SnackBar(content: Text('${context.tr('Could not save')}: $e')));
     }
   }
 }
@@ -426,7 +433,7 @@ class _DirectionTab extends StatelessWidget {
               style: TextStyle(
                 fontSize: 13.5,
                 fontWeight: FontWeight.w700,
-                color: active ? Colors.white : fg.withValues(alpha: 0.65),
+                color: active ? Colors.white : fg.withOpacity(0.65),
               ),
             ),
           ),

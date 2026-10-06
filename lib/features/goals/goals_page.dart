@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/transitions.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
@@ -20,7 +21,7 @@ class GoalsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final theme = Theme.of(context);
-    final muted = theme.colorScheme.onSurface.withValues(alpha: 0.55);
+    final muted = theme.colorScheme.onSurface.withOpacity(0.55);
 
     return Column(
       children: [
@@ -82,7 +83,7 @@ class GoalsPage extends StatelessWidget {
 
   void _open(BuildContext context, [SavingsGoal? goal]) {
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => GoalEditor(initial: goal)),
+      AppPageRoute(builder: (_) => GoalEditor(initial: goal)),
     );
   }
 
@@ -99,6 +100,12 @@ class GoalsPage extends StatelessWidget {
     );
     if (result == null || !context.mounted) return;
 
+    // Pre-capture translations before async operations so context access
+    // stays within a known-mounted synchronous window.
+    final addFundsLabel = context.tr('Add funds');
+    final goalNameLabel = context.tr(goal.name);
+    final goalReachedLabel = context.tr('Goal reached');
+
     String message;
     if (result.viaTransaction) {
       // A wallet movement: the user asked for the goal to be filled out of a
@@ -112,17 +119,17 @@ class GoalsPage extends StatelessWidget {
           categoryId: result.categoryId!,
           type: result.isIncome ? TxType.income : TxType.expense,
           amount: result.amount,
-          note: '${context.tr('Add funds')}: ${goal.name}',
+          note: '$addFundsLabel: ${goal.name}',
           date: DateTime.now(),
         ),
       );
       final credited = added < result.amount ? added : result.amount;
-      message = '${Formatters.currency(credited)} → ${context.tr(goal.name)}';
+      message = '${Formatters.currency(credited)} → $goalNameLabel';
     } else {
       final added = await state.contributeToGoal(goal.id, result.amount);
       message = added < result.amount
-          ? '${context.tr('Goal reached')} — ${Formatters.currency(added)}'
-          : '${Formatters.currency(added)} → ${context.tr(goal.name)}';
+          ? '$goalReachedLabel — ${Formatters.currency(added)}'
+          : '${Formatters.currency(added)} → $goalNameLabel';
     }
 
     if (!context.mounted) return;
@@ -145,7 +152,7 @@ class _GoalCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final muted = theme.colorScheme.onSurface.withValues(alpha: 0.55);
+    final muted = theme.colorScheme.onSurface.withOpacity(0.55);
     final accent =
         AppColors.categorical[goal.colorIndex % AppColors.categorical.length];
     final months = goal.monthsToDeadline();
@@ -190,7 +197,7 @@ class _GoalCard extends StatelessWidget {
                             vertical: 3,
                           ),
                           decoration: BoxDecoration(
-                            color: accent.withValues(alpha: 0.14),
+                            color: accent.withOpacity(0.14),
                             borderRadius: BorderRadius.circular(AppRadius.pill),
                           ),
                           child: Text(
@@ -245,7 +252,7 @@ class _Ring extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final track =
-        Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.09);
+        Theme.of(context).colorScheme.onSurface.withOpacity(0.09);
 
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: ratio.clamp(0.0, 1.0)),
@@ -353,7 +360,7 @@ class _FundSheetState extends State<_FundSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final muted = theme.colorScheme.onSurface.withValues(alpha: 0.55);
+    final muted = theme.colorScheme.onSurface.withOpacity(0.55);
 
     final wallets = widget.state.wallets;
     final categories = _categories;
@@ -670,14 +677,14 @@ class _Empty extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             Text(
-              'Set a target — emergency fund, a laptop, a trip — and watch it fill up.',
+              context.tr('Set a target — emergency fund, a laptop, a trip — and watch it fill up.'),
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 12.5, color: muted, height: 1.45),
             ),
             const SizedBox(height: AppSpacing.xl),
             FilledButton.icon(
               onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const GoalEditor()),
+                AppPageRoute(builder: (_) => const GoalEditor()),
               ),
               icon: const Icon(Icons.add_rounded, size: 18),
               label: Text(context.tr('Create a goal')),

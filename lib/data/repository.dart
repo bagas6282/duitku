@@ -1,9 +1,11 @@
 import 'package:sqflite/sqflite.dart' hide Transaction;
 
+import '../core/pin_hasher.dart';
 import 'database.dart';
 import 'models/budget.dart';
 import 'models/category.dart';
 import 'models/transaction.dart';
+import 'models/user.dart';
 import 'models/wallet.dart';
 
 /// Every query the app runs, in one place.
@@ -37,8 +39,22 @@ class FinanceRepository {
         whereArgs: [w.id],
       );
 
-  Future<void> deleteWallet(int id) =>
-      _d.delete('wallets', where: 'id = ?', whereArgs: [id]);
+  /// Deletes a wallet together with every transaction that mentions it.
+  ///
+  /// `wallet_id` carries ON DELETE CASCADE, but `transfer_wallet_id` has no
+  /// foreign key, so a transfer *into* this wallet would survive the delete as
+  /// an orphan: the money would look like it left the source wallet and never
+  /// arrived anywhere, and totals would drift from what the user can see. Both
+  /// directions are therefore removed here, in one transaction, so the rule is
+  /// simply "deleting a wallet deletes its history".
+  Future<void> deleteWallet(int id) => _d.transaction((txn) async {
+        await txn.delete(
+          'transactions',
+          where: 'wallet_id = ? OR transfer_wallet_id = ?',
+          whereArgs: [id, id],
+        );
+        await txn.delete('wallets', where: 'id = ?', whereArgs: [id]);
+      });
 
   // ------------------------------------------------------------- categories
 
@@ -201,6 +217,26 @@ class FinanceRepository {
     return (r.first['total'] as num?) ?? 0;
   }
 
+  /// Income and expense totals for a window in a single scan.
+  ///
+  /// Both numbers used to need two separate `SUM` queries; folding them into
+  /// one conditional aggregate halves the round-trips for the trend chart,
+  /// which asks for a window per month.
+  Future<(num income, num expense)> incomeExpenseFor({
+    required DateTime from,
+    required DateTime to,
+  }) async {
+    final r = await _d.rawQuery(
+      'SELECT '
+      "COALESCE(SUM(CASE WHEN type = 'income' THEN amount END), 0) AS inc, "
+      "COALESCE(SUM(CASE WHEN type = 'expense' THEN amount END), 0) AS exp "
+      'FROM transactions WHERE occurred_at >= ? AND occurred_at < ?',
+      [from.millisecondsSinceEpoch, to.millisecondsSinceEpoch],
+    );
+    final row = r.first;
+    return ((row['inc'] as num?) ?? 0, (row['exp'] as num?) ?? 0);
+  }
+
   /// Live balance per wallet: opening balance plus every signed movement.
   Future<Map<int, num>> walletBalances() async {
     final ws = await wallets();
@@ -227,11 +263,17 @@ class FinanceRepository {
 
     // Transfers credit the destination wallet, which the GROUP BY above
     // cannot see because the row is keyed by the source wallet.
+    //
+    // transfer_wallet_id has no ON DELETE CASCADE foreign key, so deleting the
+    // destination wallet leaves orphan transfer rows that still carry the old id.
+    // Joining on wallets ensures only live wallets are credited, so totalBalance
+    // stays correct after the destination is deleted.
     final incoming = await _d.rawQuery('''
-      SELECT transfer_wallet_id AS wid, SUM(amount) AS total
-      FROM transactions
-      WHERE type = 'transfer' AND transfer_wallet_id IS NOT NULL
-      GROUP BY transfer_wallet_id
+      SELECT t.transfer_wallet_id AS wid, SUM(t.amount) AS total
+      FROM transactions t
+      INNER JOIN wallets w ON w.id = t.transfer_wallet_id
+      WHERE t.type = 'transfer' AND t.transfer_wallet_id IS NOT NULL
+      GROUP BY t.transfer_wallet_id
     ''');
     for (final row in incoming) {
       final id = row['wid'] as int;
@@ -433,6 +475,59 @@ class FinanceRepository {
     });
   }
 
+  /// Atomically books a wallet transaction and credits the goal.
+  ///
+  /// Both operations run inside one transaction so the money movement is
+  /// all-or-nothing: if the process dies mid-way, neither the transaction nor
+  /// the goal credit lands, so no money is lost.
+  ///
+  /// Returns the amount credited to the goal (which may be less than the
+  /// transaction amount if the goal is near its target).
+  Future<num> fundGoalFromWalletAtomic({
+    required int goalId,
+    required num amount,
+    required int walletId,
+    required int categoryId,
+    required TxType type,
+    required String note,
+    required DateTime date,
+  }) async {
+    if (amount <= 0) return 0;
+
+    return _d.transaction((txn) async {
+      // Read the goal's current state inside the transaction to avoid TOCTOU.
+      final goalRows = await txn.query('goals', where: 'id = ?', whereArgs: [goalId]);
+      if (goalRows.isEmpty) return 0;
+
+      final goal = SavingsGoal.fromMap(goalRows.first);
+      final headroom = goal.targetAmount - goal.savedAmount;
+      if (headroom <= 0) return 0;
+
+      // Book the transaction first: the user requested the full amount, and
+      // that's what leaves the wallet even if the goal can only take a portion.
+      await txn.insert('transactions', {
+        'wallet_id': walletId,
+        'category_id': categoryId,
+        'type': type.name,
+        'amount': amount,
+        'note': note,
+        'occurred_at': date.millisecondsSinceEpoch,
+      });
+
+      // Credit the goal with however much it can hold.
+      final added = amount > headroom ? headroom : amount;
+      final saved = goal.savedAmount + added;
+      await txn.update(
+        'goals',
+        {'saved_amount': saved, 'done': saved >= goal.targetAmount ? 1 : 0},
+        where: 'id = ?',
+        whereArgs: [goalId],
+      );
+
+      return added;
+    });
+  }
+
   // -------------------------------------------------------------- recurring
 
   Future<List<RecurringRule>> recurringRules() async {
@@ -540,6 +635,128 @@ class FinanceRepository {
     return DateTime(year, month, day, from.hour, from.minute);
   }
 
+  // ---------------------------------------------------------------- users
+
+  Future<UserModel?> getUserById(int id) async {
+    final rows = await _d.query(
+      'users',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return UserModel.fromMap(rows.first);
+  }
+
+  Future<UserModel?> getUserByEmail(String email) async {
+    final cleanEmail = email.trim().toLowerCase();
+    final rows = await _d.query(
+      'users',
+      where: 'LOWER(TRIM(email)) = ?',
+      whereArgs: [cleanEmail],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return UserModel.fromMap(rows.first);
+  }
+
+  Future<UserModel?> authenticateUser(String email, String password) async {
+    final cleanEmail = email.trim().toLowerCase();
+    final rows = await _d.query(
+      'users',
+      where: 'LOWER(TRIM(email)) = ?',
+      whereArgs: [cleanEmail],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    final row = rows.first;
+    final hash = row['password_hash'] as String;
+    if (PinHasher.verify(password, hash)) {
+      return UserModel.fromMap(row);
+    }
+    return null;
+  }
+
+  Future<UserModel> registerUser({
+    required String name,
+    required String email,
+    required String password,
+    String? avatarUrl,
+  }) async {
+    final cleanEmail = email.trim().toLowerCase();
+    final existing = await getUserByEmail(cleanEmail);
+    if (existing != null) {
+      throw Exception('Email sudah terdaftar.');
+    }
+    final hash = PinHasher.hashPin(password);
+    final now = DateTime.now();
+    try {
+      final id = await _d.insert('users', {
+        'name': name.trim(),
+        'email': cleanEmail,
+        'password_hash': hash,
+        'avatar_url': avatarUrl,
+        'created_at': now.millisecondsSinceEpoch,
+      });
+      return UserModel(
+        id: id,
+        name: name.trim(),
+        email: cleanEmail,
+        avatarUrl: avatarUrl,
+        createdAt: now,
+      );
+    } on DatabaseException catch (e) {
+      // The pre-check can lose a race; catch the UNIQUE constraint violation
+      // and surface the same friendly message the early-exit path uses, so the
+      // UI never shows raw SQLite errors.
+      if (e.isUniqueConstraintError('users.email')) {
+        throw Exception('Email sudah terdaftar.');
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> updateUser(UserModel user) async {
+    await _d.update(
+      'users',
+      user.toMap(),
+      where: 'id = ?',
+      whereArgs: [user.id],
+    );
+  }
+
+  Future<bool> changePassword({
+    required int userId,
+    required String oldPassword,
+    required String newPassword,
+  }) async {
+    final rows = await _d.query(
+      'users',
+      columns: ['password_hash'],
+      where: 'id = ?',
+      whereArgs: [userId],
+      limit: 1,
+    );
+    if (rows.isEmpty) return false;
+    final currentHash = rows.first['password_hash'] as String;
+    if (!PinHasher.verify(oldPassword, currentHash)) {
+      return false;
+    }
+    final newHash = PinHasher.hashPin(newPassword);
+    await _d.update(
+      'users',
+      {'password_hash': newHash},
+      where: 'id = ?',
+      whereArgs: [userId],
+    );
+    return true;
+  }
+
+  Future<int> countUsers() async {
+    final r = await _d.rawQuery('SELECT COUNT(*) AS c FROM users');
+    return (r.first['c'] as int?) ?? 0;
+  }
+
   // ---------------------------------------------------------------- meta
 
   Future<int> countTransactions() async {
@@ -553,23 +770,26 @@ class FinanceRepository {
   /// wallet and no category, unable to record anything until they rebuilt both
   /// by hand.
   Future<void> wipe() async {
-    final batch = _d.batch();
-    for (final t in [
-      'transactions',
-      'budgets',
-      'recurring',
-      'goals',
-      'categories',
-      'wallets',
-    ]) {
-      batch.delete(t);
-    }
-    await batch.commit(noResult: true);
+    // All three steps — clear tables, reset AUTOINCREMENT counters, and
+    // re-seed defaults — run inside a single transaction so the database is
+    // never left in a half-wiped state if the process dies mid-way.
+    await _d.transaction((txn) async {
+      for (final t in [
+        'transactions',
+        'budgets',
+        'recurring',
+        'goals',
+        'categories',
+        'wallets',
+      ]) {
+        await txn.delete(t);
+      }
 
-    // Reset AUTOINCREMENT counters so ids start from 1 again.
-    await _d.delete('sqlite_sequence');
+      // Reset AUTOINCREMENT counters so ids start from 1 again.
+      await txn.delete('sqlite_sequence');
 
-    await AppDatabase.seedDefaults(_d);
+      await AppDatabase.seedDefaults(txn);
+    });
   }
 }
 
@@ -582,4 +802,20 @@ class DailyTotal {
   num expense = 0;
 
   num get net => income - expense;
+}
+
+/// Extension to detect UNIQUE constraint violations in SQLite errors.
+extension DatabaseExceptionX on DatabaseException {
+  /// True when the exception is a UNIQUE constraint violation.
+  ///
+  /// SQLite error messages for constraint violations follow the pattern:
+  /// "UNIQUE constraint failed: table.column". Checking the message is
+  /// fragile but sqflite does not expose a structured error code.
+  bool isUniqueConstraintError(String? columnHint) {
+    final msg = toString().toLowerCase();
+    if (columnHint != null) {
+      return msg.contains('unique') && msg.contains(columnHint.toLowerCase());
+    }
+    return msg.contains('unique');
+  }
 }

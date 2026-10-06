@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/strings.dart';
 import '../../core/theme.dart';
 import '../../data/app_state.dart';
-import '../../core/strings.dart';
 
 /// Collects a new passcode, then confirms it.
 class PasscodeSetup extends StatefulWidget {
@@ -44,7 +44,7 @@ class _PasscodeSetupState extends State<PasscodeSetup> {
 
     if (_entry != _first) {
       setState(() {
-        _error = 'Codes did not match — start again';
+        _error = context.tr('Codes did not match — start again');
         _entry = '';
         _first = '';
         _confirming = false;
@@ -64,7 +64,7 @@ class _PasscodeSetupState extends State<PasscodeSetup> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final muted = theme.colorScheme.onSurface.withValues(alpha: 0.55);
+    final muted = theme.colorScheme.onSurface.withOpacity(0.55);
 
     return Scaffold(
       appBar: AppBar(
@@ -103,7 +103,7 @@ class _PasscodeSetupState extends State<PasscodeSetup> {
                         color: filled
                             ? AppColors.mint
                             : theme.colorScheme.onSurface
-                                .withValues(alpha: 0.16),
+                                .withOpacity(0.16),
                         shape: BoxShape.circle,
                       ),
                     );
@@ -118,7 +118,7 @@ class _PasscodeSetupState extends State<PasscodeSetup> {
                           child: Text(
                             _error!,
                             style: const TextStyle(
-                              color: AppColors.expense,
+                              color: AppColors.danger,
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
                             ),
@@ -150,7 +150,7 @@ class _Pad extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.all(6),
             child: Material(
-              color: fg.withValues(alpha: 0.05),
+              color: fg.withOpacity(0.05),
               borderRadius: BorderRadius.circular(AppRadius.md),
               child: InkWell(
                 onTap: onTap ?? () => onDigit(label),
@@ -192,7 +192,7 @@ class _Pad extends StatelessWidget {
               child: Icon(
                 Icons.backspace_outlined,
                 size: 20,
-                color: fg.withValues(alpha: 0.7),
+                color: fg.withOpacity(0.7),
               ),
             ),
           ],

@@ -21,7 +21,7 @@ flutter run              # jalan di HP/emulator yang terhubung
 
 ### Build APK
 ```bash
-flutter build apk --release --no-tree-shake-icons
+flutter build apk --release --no-tree-shake-icons --android-skip-build-dependency-validation
 # hasil: build/app/outputs/flutter-apk/app-release.apk
 ```
 

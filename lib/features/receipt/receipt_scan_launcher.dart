@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/transitions.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
@@ -48,7 +49,7 @@ class ReceiptScanLauncher {
                 leading: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: AppColors.mint.withValues(alpha: 0.12),
+                    color: AppColors.mint.withOpacity(0.12),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(Icons.camera_alt_rounded, color: AppColors.mint),
@@ -61,7 +62,7 @@ class ReceiptScanLauncher {
                 leading: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: AppColors.mint.withValues(alpha: 0.12),
+                    color: AppColors.mint.withOpacity(0.12),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(Icons.photo_library_rounded, color: AppColors.mint),
@@ -125,7 +126,7 @@ class ReceiptScanLauncher {
       }
 
       await Navigator.of(context).push(
-        MaterialPageRoute(
+        AppPageRoute(
           builder: (_) => TransactionEditor(
             initialAmount: result.amount,
             initialNote: result.merchantName,

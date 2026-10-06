@@ -97,7 +97,8 @@ class L {
     'Income': 'Pemasukan',
     'Expense': 'Pengeluaran',
     'Uncategorized': 'Tanpa kategori',
-    'Optional — what was this for?': 'Opsional — untuk apa?',
+    'Optional — what was this for?':
+        'Opsional — untuk apa transaksi ini?',
     'Search notes and categories': 'Cari catatan dan kategori',
 
     // ---- budget
@@ -214,6 +215,8 @@ class L {
     'All data deleted': 'Semua data dihapus',
     'Import backup?': 'Impor cadangan?',
     'Reset everything?': 'Atur ulang semuanya?',
+    'Everything currently in Duitku will be replaced by the file you pick.':
+        'Semua data di Duitku akan digantikan oleh berkas yang Anda pilih.',
     'Everything currently in Duitku will be replaced by the file ':
         'Semua data di Duitku akan digantikan oleh berkas ',
     'Every transaction, budget and goal will be deleted. Wallets and ':
@@ -269,6 +272,17 @@ class L {
     'Duitku failed to start': 'Duitku gagal dijalankan',
     'Your data is still on the device. Reopening the app ':
         'Data Anda masih tersimpan di perangkat. Membuka ulang aplikasi ',
+    'Your data is still on the device. Reopening the app usually fixes this; if it keeps happening, the database may need to be restored from a backup.':
+        'Data Anda masih tersimpan di perangkat. Membuka ulang aplikasi biasanya menyelesaikan masalah ini; jika terus terjadi, basis data mungkin perlu dipulihkan dari cadangan.',
+    // Error messages surfaced from backup validation — keys are English so the
+    // fallback to the key itself is readable in English-locale builds too.
+    'Could not save: an error occurred': 'Gagal menyimpan: terjadi kesalahan',
+    'Export failed': 'Ekspor gagal',
+    'Import failed': 'Impor gagal',
+    'Codes did not match — start again': 'Kode tidak cocok — coba lagi',
+    'Saved so far': 'Sudah terkumpul',
+    'Set a target — emergency fund, a laptop, a trip — and watch it fill up.':
+        'Tetapkan target — dana darurat, laptop, liburan — dan pantau pencapaiannya.',
 
     // ---- dates
     'Jan': 'Jan', 'Feb': 'Feb', 'Mar': 'Mar', 'Apr': 'Apr',
@@ -288,7 +302,8 @@ class L {
     "Rules are created from a transaction by marking it as repeating. They post automatically when due.": "Aturan dibuat dari sebuah transaksi dengan menandainya sebagai berulang. Aturan dijalankan otomatis saat jatuh tempo.",
     "Duitku backup": "Cadangan Duitku",
     "Duitku CSV": "CSV Duitku",
-    "Duitku 1.0.0": "Duitku 1.0.0",
+    "Duitku 1.0.0": "Duitku 1.5.4",
+    "Duitku 1.5.4": "Duitku 1.5.4",
     "Duitku": "Duitku",
     "MaterialIcons": "MaterialIcons",
     "Cash": "Tunai",

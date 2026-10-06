@@ -15,6 +15,7 @@ import 'database.dart';
 import 'models/budget.dart';
 import 'models/category.dart';
 import 'models/transaction.dart';
+import 'models/user.dart';
 import 'models/wallet.dart';
 import 'repository.dart';
 
@@ -47,6 +48,7 @@ class AppState extends ChangeNotifier {
     }
 
     await state.refreshAll();
+    await state._loadUserSession();
     state._applyPrefs();
     return state;
   }
@@ -61,6 +63,7 @@ class AppState extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     final state = AppState._(db, repo, prefs);
     await state.refreshAll();
+    await state._loadUserSession();
     state._applyPrefs();
     return state;
   }
@@ -73,6 +76,123 @@ class AppState extends ChangeNotifier {
     await _db.close();
     AppDatabase.overridePath(null);
     super.dispose();
+  }
+
+  // ---------------------------------------------------------------- auth
+
+  UserModel? _currentUser;
+  UserModel? get currentUser => _currentUser;
+
+  /// True when the user is logged in with an active account or session.
+  bool get isAuthenticated => _currentUser != null;
+
+  Future<void> _loadUserSession() async {
+    final userId = _prefs.getInt('current_user_id');
+    if (userId != null) {
+      _currentUser = await _repo.getUserById(userId);
+    }
+  }
+
+  /// Attempts to log in with email and password.
+  /// Returns null on success, or an error message on failure.
+  Future<String?> login(String email, String password) async {
+    final cleanEmail = email.trim().toLowerCase();
+    if (cleanEmail.isEmpty) return 'Email tidak boleh kosong.';
+    if (password.isEmpty) return 'Kata sandi tidak boleh kosong.';
+
+    try {
+      final user = await _repo.authenticateUser(cleanEmail, password);
+      if (user == null) {
+        return 'Email atau kata sandi salah.';
+      }
+      _currentUser = user;
+      await _prefs.setInt('current_user_id', user.id);
+      await _prefs.setBool('is_logged_in', true);
+      notifyListeners();
+      return null;
+    } catch (e) {
+      return 'Gagal masuk: $e';
+    }
+  }
+
+  /// Registers a new user account and immediately logs them in.
+  /// Returns null on success, or an error message on failure.
+  Future<String?> register({
+    required String name,
+    required String email,
+    required String password,
+  }) async {
+    final cleanName = name.trim();
+    final cleanEmail = email.trim().toLowerCase();
+    if (cleanName.isEmpty) return 'Nama lengkap tidak boleh kosong.';
+    if (cleanEmail.isEmpty) return 'Email tidak boleh kosong.';
+    if (!cleanEmail.contains('@') || !cleanEmail.contains('.')) {
+      return 'Format email tidak valid.';
+    }
+    if (password.length < 6) {
+      return 'Kata sandi minimal 6 karakter.';
+    }
+
+    try {
+      final user = await _repo.registerUser(
+        name: cleanName,
+        email: cleanEmail,
+        password: password,
+      );
+      _currentUser = user;
+      await _prefs.setInt('current_user_id', user.id);
+      await _prefs.setBool('is_logged_in', true);
+      notifyListeners();
+      return null;
+    } catch (e) {
+      final msg = e.toString().replaceAll('Exception: ', '');
+      return msg;
+    }
+  }
+
+  /// Guest / Demo mode entry for quick offline access.
+  Future<void> continueAsGuest() async {
+    try {
+      var guest = await _repo.getUserByEmail('guest@duitku.local');
+      if (guest == null) {
+        guest = await _repo.registerUser(
+          name: 'Pengguna Duitku',
+          email: 'guest@duitku.local',
+          password: 'guest-password-duitku',
+        );
+      }
+      _currentUser = guest;
+      await _prefs.setInt('current_user_id', guest.id);
+      await _prefs.setBool('is_logged_in', true);
+      notifyListeners();
+    } catch (e) {
+      // Fallback in-memory user
+      _currentUser = UserModel(
+        id: 1,
+        name: 'Pengguna Duitku',
+        email: 'user@duitku.local',
+        createdAt: DateTime.now(),
+      );
+      notifyListeners();
+    }
+  }
+
+  Future<void> logout() async {
+    _currentUser = null;
+    await _prefs.remove('current_user_id');
+    await _prefs.setBool('is_logged_in', false);
+    notifyListeners();
+  }
+
+  Future<void> updateProfile({required String name, String? avatarUrl}) async {
+    if (_currentUser == null) return;
+    final updated = _currentUser!.copyWith(
+      name: name.trim(),
+      avatarUrl: avatarUrl,
+    );
+    await _repo.updateUser(updated);
+    _currentUser = updated;
+    notifyListeners();
   }
 
   // ---------------------------------------------------------- preferences
@@ -151,12 +271,40 @@ class AppState extends ChangeNotifier {
   Future<void> setPin(String? pin) async {
     if (pin == null || pin.isEmpty) {
       await _prefs.remove('pin');
+      await _prefs.remove('pin_length');
       await _prefs.setBool('pin_enabled', false);
     } else {
       await _prefs.setString('pin', PinHasher.hashPin(pin));
+      await _prefs.setInt('pin_length', pin.length);
       await _prefs.setBool('pin_enabled', true);
     }
     notifyListeners();
+  }
+
+  /// Panjang PIN yang tersimpan (4-6 digit).
+  int get pinLength => _prefs.getInt('pin_length') ?? 4;
+
+  /// Cek apakah email sudah terdaftar di sistem.
+  Future<bool> checkEmailExists(String email) async {
+    final trimmed = email.trim().toLowerCase();
+    final user = await _repo.getUserByEmail(trimmed);
+    return user != null;
+  }
+
+  /// Reset PIN dengan verifikasi email (untuk fitur lupa PIN).
+  Future<void> resetPinWithEmail({
+    required String email,
+    required String newPin,
+  }) async {
+    final trimmed = email.trim().toLowerCase();
+    final user = await _repo.getUserByEmail(trimmed);
+    
+    if (user == null) {
+      throw Exception('Email tidak terdaftar');
+    }
+    
+    // Set PIN baru
+    await setPin(newPin);
   }
 
   /// True when [candidate] matches the stored passcode.
@@ -199,7 +347,62 @@ class AppState extends ChangeNotifier {
   String get monthKey =>
       '${_month.year}-${_month.month.toString().padLeft(2, '0')}';
 
+  /// Coalesces overlapping [refreshAll] calls into one pass at a time.
+  ///
+  /// Every writer refreshes right after it commits, so a call arriving while a
+  /// pass is running must NOT be handed the snapshot that is already in flight:
+  /// that snapshot may predate the write that triggered the call. Instead the
+  /// running pass is marked dirty and repeats once before completing, which
+  /// guarantees every caller — and the listeners that repaint on
+  /// [notifyListeners] — sees data that includes its own change.
+  Future<void>? _refreshing;
+
+  /// Set when a refresh is requested while another pass is running.
+  bool _refreshAgain = false;
+
+  /// True while [importBackup] is swapping the database file.
+  ///
+  /// During that window the old handle is closed and the new one is not open
+  /// yet, so any query would throw `database_closed`. Readers are skipped
+  /// rather than queued: the import path performs a full refresh of its own
+  /// once the new handle is live, so there is nothing to catch up on.
+  bool _importing = false;
+
   Future<void> refreshAll() async {
+    // The import path closes the database handle before calling refreshAll, so
+    // any pass that started during that window would throw `database_closed`.
+    // Skip the refresh: the import performs a full refresh of its own once the
+    // new handle is live, so there is nothing to catch up on.
+    if (_importing) return;
+
+    final running = _refreshing;
+    if (running != null) {
+      // A pass is already running. If it started before the write that triggered
+      // this call, its snapshot won't include that write, so mark the pass dirty
+      // and it will repeat once before completing.
+      _refreshAgain = true;
+      await running;
+      return;
+    }
+
+    final pass = _refreshLoop();
+    _refreshing = pass;
+    await pass;
+  }
+
+  Future<void> _refreshLoop() async {
+    try {
+      while (true) {
+        _refreshAgain = false;
+        await _doRefresh();
+        if (!_refreshAgain) break;
+      }
+    } finally {
+      _refreshing = null;
+    }
+  }
+
+  Future<void> _doRefresh() async {
     loading = true;
     notifyListeners();
 
@@ -232,7 +435,19 @@ class AppState extends ChangeNotifier {
   Future<void> _loadMonth() async {
     final (from, to) = _monthWindow;
     transactions = await _repo.transactions(from: from, to: to);
+    // Every read path that caches a Future keys off this: a write can change
+    // a value without changing the row count (editing an amount), so a
+    // "signature" built from the list length alone would keep serving stale
+    // numbers for budgets and the trend chart.
+    _dataRevision++;
   }
+
+  /// Bumped whenever the transaction list is reloaded from the database.
+  ///
+  /// Cheap, monotonically increasing staleness token for widgets that cache a
+  /// query result: compare it before reusing the cached future.
+  int get dataRevision => _dataRevision;
+  int _dataRevision = 0;
 
   Future<void> setMonth(DateTime value) async {
     _month = DateTime(value.year, value.month);
@@ -285,14 +500,67 @@ class AppState extends ChangeNotifier {
   }
 
   // ------------------------------------------------------------- summaries
+  //
+  // Derived values are cached instead of recomputed per read: a single
+  // dashboard frame reads these getters more than a dozen times, and each
+  // uncached read was a full pass over the month's transactions. The cache is
+  // keyed on the exact list instance (query results are always a fresh
+  // instance, and nothing mutates the list in place), the period mode and the
+  // selected day — so it can only serve values derived from the same inputs.
+  List<Transaction>? _sumFor;
+  PeriodMode? _sumMode;
+  DateTime? _sumDay;
+  num _sumDailyIncome = 0;
+  num _sumDailyExpense = 0;
+  num _sumMonthIncome = 0;
+  num _sumMonthExpense = 0;
+  List<Transaction> _sumPeriodList = const [];
 
-  num get dailyIncome => transactions
-      .where((t) => t.isIncome && Formatters.isSameDay(t.date, _selectedDate))
-      .fold<num>(0, (sum, t) => sum + t.amount);
+  /// Recomputes the cached summaries in a single pass when any input changed.
+  void _ensureSummaries() {
+    final txs = transactions;
+    if (identical(_sumFor, txs) &&
+        _sumMode == _periodMode &&
+        _sumDay == _selectedDate) {
+      return;
+    }
 
-  num get dailyExpense => transactions
-      .where((t) => t.type == TxType.expense && Formatters.isSameDay(t.date, _selectedDate))
-      .fold<num>(0, (sum, t) => sum + t.amount);
+    const sameDay = Formatters.isSameDay;
+    num dIn = 0, dEx = 0, mIn = 0, mEx = 0;
+    final isDaily = _periodMode == PeriodMode.daily;
+    final periodList = isDaily ? <Transaction>[] : txs;
+
+    for (final t in txs) {
+      final isDay = sameDay(t.date, _selectedDate);
+      if (t.isIncome) {
+        mIn += t.amount;
+        if (isDay) dIn += t.amount;
+      } else if (t.type == TxType.expense) {
+        mEx += t.amount;
+        if (isDay) dEx += t.amount;
+      }
+      if (isDaily && isDay) periodList.add(t);
+    }
+
+    _sumFor = txs;
+    _sumMode = _periodMode;
+    _sumDay = _selectedDate;
+    _sumDailyIncome = dIn;
+    _sumDailyExpense = dEx;
+    _sumMonthIncome = mIn;
+    _sumMonthExpense = mEx;
+    _sumPeriodList = periodList;
+  }
+
+  num get dailyIncome {
+    _ensureSummaries();
+    return _sumDailyIncome;
+  }
+
+  num get dailyExpense {
+    _ensureSummaries();
+    return _sumDailyExpense;
+  }
 
   num get dailyNet => dailyIncome - dailyExpense;
 
@@ -300,19 +568,20 @@ class AppState extends ChangeNotifier {
   num get periodExpense => _periodMode == PeriodMode.daily ? dailyExpense : monthExpense;
   num get periodNet => periodIncome - periodExpense;
 
-  List<Transaction> get periodTransactions => _periodMode == PeriodMode.daily
-      ? transactions
-          .where((t) => Formatters.isSameDay(t.date, _selectedDate))
-          .toList(growable: false)
-      : transactions;
+  List<Transaction> get periodTransactions {
+    _ensureSummaries();
+    return _sumPeriodList;
+  }
 
-  num get monthIncome => transactions
-      .where((t) => t.isIncome)
-      .fold<num>(0, (sum, t) => sum + t.amount);
+  num get monthIncome {
+    _ensureSummaries();
+    return _sumMonthIncome;
+  }
 
-  num get monthExpense => transactions
-      .where((t) => t.type == TxType.expense)
-      .fold<num>(0, (sum, t) => sum + t.amount);
+  num get monthExpense {
+    _ensureSummaries();
+    return _sumMonthExpense;
+  }
 
   num get monthNet => monthIncome - monthExpense;
 
@@ -348,27 +617,30 @@ class AppState extends ChangeNotifier {
 
   /// Income and expense totals for the last [count] months, oldest first.
   ///
-  /// Queries per month rather than loading everything — a year of history is
-  /// a dozen small indexed scans, and the chart stays responsive.
+  /// One combined query per month, all months issued together: the previous
+  /// version awaited 2 queries sequentially per month, so a 12-month chart
+  /// paid for 24 round-trips before it could draw.
   Future<List<MonthlyTotal>> monthlyTotals(int count) async {
-    final out = <MonthlyTotal>[];
-    for (var i = count - 1; i >= 0; i--) {
-      final m = DateTime(_month.year, _month.month - i);
-      final from = DateTime(m.year, m.month, 1);
-      final to = DateTime(m.year, m.month + 1, 1);
-      final income = await _repo.sumFor(
-        TxType.income,
-        from: from,
-        to: to,
-      );
-      final expense = await _repo.sumFor(
-        TxType.expense,
-        from: from,
-        to: to,
-      );
-      out.add(MonthlyTotal(month: m, income: income, expense: expense));
-    }
-    return out;
+    final months = [
+      for (var i = count - 1; i >= 0; i--)
+        DateTime(_month.year, _month.month - i),
+    ];
+    final totals = await Future.wait(
+      months.map((m) {
+        final from = DateTime(m.year, m.month, 1);
+        final to = DateTime(m.year, m.month + 1, 1);
+        return _repo.incomeExpenseFor(from: from, to: to);
+      }),
+    );
+
+    return [
+      for (var i = 0; i < months.length; i++)
+        MonthlyTotal(
+          month: months[i],
+          income: totals[i].$1,
+          expense: totals[i].$2,
+        ),
+    ];
   }
 
   /// Budget usage for the visible month, sorted by how close each cap is.
@@ -626,10 +898,9 @@ class AppState extends ChangeNotifier {
   /// transaction so the wallet balance stays truthful instead of the goal
   /// growing out of thin air.
   ///
-  /// The transaction is stored **first** and the goal is then credited by the
-  /// amount that actually landed. A partial credit — the goal was near its
-  /// target — therefore leaves a transaction larger than the goal moved, which
-  /// is the honest outcome: the money really did leave the wallet.
+  /// The transaction and goal credit run inside a single database transaction,
+  /// so both happen or neither does — no money is lost if the process dies
+  /// mid-way.
   ///
   /// Returns the credited amount, or null when there was nothing to do, e.g.
   /// the goal is already complete or no expense category exists to file the
@@ -653,19 +924,16 @@ class AppState extends ChangeNotifier {
     );
     if (categories.isEmpty) return null;
 
-    await _repo.insertTransaction(
-      Transaction(
-        id: 0,
-        walletId: walletId,
-        categoryId: categories.first.id,
-        type: isIncome ? TxType.income : TxType.expense,
-        amount: amount,
-        note: '${isIncome ? 'Payout' : 'Top-up'}: ${goal.name}',
-        date: DateTime.now(),
-      ),
+    final added = await _repo.fundGoalFromWalletAtomic(
+      goalId: goalId,
+      amount: amount,
+      walletId: walletId,
+      categoryId: categories.first.id,
+      type: isIncome ? TxType.income : TxType.expense,
+      note: '${isIncome ? 'Payout' : 'Top-up'}: ${goal.name}',
+      date: DateTime.now(),
     );
 
-    final added = await _repo.contributeToGoal(goalId, amount);
     await refreshAll();
     return added;
   }
@@ -725,6 +993,17 @@ class AppState extends ChangeNotifier {
   /// no data at all. If anything goes wrong the backup is restored, so the
   /// worst case is "nothing changed".
   Future<void> importBackup(File file) async {
+    _importing = true;
+    try {
+      await _importBackupUnsafe(file);
+    } finally {
+      // Clear the flag only after the refresh inside _importBackupUnsafe has
+      // finished, so the new database state is visible to callers.
+      _importing = false;
+    }
+  }
+
+  Future<void> _importBackupUnsafe(File file) async {
     // Overwrite the database this state is actually using, not a hard-coded
     // `duitku.db` next to it. The two only coincide in a real install; in a
     // test run, or any future launch that opens a database at another path,
@@ -740,16 +1019,26 @@ class AppState extends ChangeNotifier {
 
     await _db.close();
 
+    // Stash the current database and its WAL/SHM companions so rollback can
+    // restore all three if the import fails.
     for (final suffix in ['', '-wal', '-shm']) {
       final f = File('${stash.path}$suffix');
       if (await f.exists()) await f.delete();
     }
-    if (await dest.exists()) await dest.rename(stash.path);
+    for (final suffix in ['', '-wal', '-shm']) {
+      final src = File('${dest.path}$suffix');
+      if (await src.exists()) {
+        await src.rename('${stash.path}$suffix');
+      }
+    }
 
     try {
       await file.copy(dest.path);
       _db = await AppDatabase.open();
       _repo = FinanceRepository(_db);
+
+      // Clear the import flag so the refresh can proceed.
+      _importing = false;
       await refreshAll();
       // Success: the previous database is no longer needed.
       for (final suffix in ['', '-wal', '-shm']) {
@@ -758,11 +1047,17 @@ class AppState extends ChangeNotifier {
       }
     } catch (e) {
       // Put the original back so a bad file cannot destroy real data.
+      // Restore all three files (main, WAL, SHM) to keep SQLite consistent.
       for (final suffix in ['', '-wal', '-shm']) {
         final f = File('${dest.path}$suffix');
         if (await f.exists()) await f.delete();
       }
-      if (await stash.exists()) await stash.rename(dest.path);
+      for (final suffix in ['', '-wal', '-shm']) {
+        final src = File('${stash.path}$suffix');
+        if (await src.exists()) {
+          await src.rename('${dest.path}$suffix');
+        }
+      }
       _db = await AppDatabase.open();
       _repo = FinanceRepository(_db);
       await refreshAll();
