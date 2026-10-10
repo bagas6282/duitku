@@ -1,48 +1,32 @@
 # Setup Email OTP untuk Duitku
 
-## 📧 Cara Setup Gmail SMTP
+## Cara Kerja
 
-Aplikasi Duitku menggunakan **Gmail SMTP** untuk kirim OTP verifikasi email (saat register & reset PIN).
+OTP berjalan di **Google Apps Script + GmailApp** (tanpa VPS):
+- Apps Script (`server/apps-script/Code.gs`) membuat kode 6 digit, menyimpannya sementara, dan memverifikasinya.
+- Email dikirim lewat **GmailApp** dari akun Gmail deployer (kuota sekitar 100 email/hari).
+- Aplikasi hanya memanggil URL `/exec` Apps Script. Tidak ada kredensial email di APK.
 
-### Langkah Setup:
+Panduan lengkap (buat project Apps Script, Script Properties, izin Gmail, deploy Web app) ada di `server/apps-script/README.md`.
 
-#### 1. Buat/Gunakan Akun Gmail
-- Bisa pakai Gmail pribadi atau buat akun baru khusus untuk app
-- Rekomendasikan buat Gmail baru (misalnya: `duitku.otp@gmail.com`)
+### Build aplikasi dengan endpoint OTP
 
-#### 2. Aktifkan 2-Step Verification
-1. Buka https://myaccount.google.com/security
-2. Cari **2-Step Verification** → Klik **Turn On**
-3. Ikuti langkah verifikasi (SMS/Phone)
-
-#### 3. Generate App Password
-1. Buka https://myaccount.google.com/apppasswords
-2. Pilih app: **Mail**
-3. Pilih device: **Other (Custom name)** → ketik `Duitku App`
-4. Klik **Generate**
-5. Copy **16-character password** yang muncul (format: `xxxx xxxx xxxx xxxx`)
-
-#### 4. Update File `email_service.dart`
-Buka file `lib/services/email_service.dart` dan edit baris berikut:
-
-```dart
-// SEBELUM (default):
-static const String _senderEmail = 'your-email@gmail.com';
-static const String _appPassword = 'your-16-char-app-password';
-
-// SESUDAH (isi dengan data lo):
-static const String _senderEmail = 'duitku.otp@gmail.com';
-static const String _appPassword = 'abcd efgh ijkl mnop'; // 16 karakter tanpa spasi
+```
+flutter build apk --release --no-tree-shake-icons --dart-define=OTP_ENDPOINT=<URL_EXEC> --dart-define=OTP_APP_KEY=<KEY>
 ```
 
-**⚠️ PENTING:**
-- Jangan commit file ini ke Git public dengan kredensial asli
-- App Password ≠ Password Gmail biasa
-- Simpan App Password dengan aman
+- `OTP_ENDPOINT`: URL Web app Apps Script (berakhiran `/exec`)
+- `OTP_APP_KEY`: nilai yang sama dengan Script Property `APP_KEY`
+
+Jika `OTP_ENDPOINT` tidak diisi, fitur OTP menampilkan "Layanan OTP belum dikonfigurasi." dan tidak melakukan request jaringan.
+
+**PENTING:**
+- Jangan commit `OTP_APP_KEY` atau URL berkredensial ke repo publik.
+- `APP_KEY` hanya disimpan di Script Properties Apps Script, bukan di kode.
 
 ---
 
-## 🔥 Fitur yang Ditambahkan (v1.7.0)
+## Fitur yang Ditambahkan (v1.7.0)
 
 ### 1. **Verifikasi Email saat Register**
 - Input nama, email, password
@@ -64,7 +48,7 @@ static const String _appPassword = 'abcd efgh ijkl mnop'; // 16 karakter tanpa s
 
 ---
 
-## 📱 Testing
+## Testing
 
 ### Test Email Verification:
 1. Register akun baru dengan email valid
@@ -81,46 +65,36 @@ static const String _appPassword = 'abcd efgh ijkl mnop'; // 16 karakter tanpa s
 
 ---
 
-## 🛠️ Troubleshooting
+## Troubleshooting
 
 ### Email OTP tidak terkirim?
-1. **Cek koneksi internet** — SMTP butuh internet aktif
-2. **Cek App Password** — pastikan 16 karakter, tanpa spasi
-3. **Cek 2FA Gmail** — harus sudah aktif
-4. **Cek Spam folder** — kadang masuk Spam
-5. **Test SMTP manual** — pakai tool seperti Postman/curl
+1. **Cek koneksi internet**: request butuh internet aktif
+2. **Cek Script Properties**: `APP_KEY` harus terisi
+3. **Cek izin Gmail**: jalankan `doPost` sekali di editor dan klik Allow
+4. **Cek Spam folder**: kadang email masuk Spam
+5. **Cek kuota**: GmailApp sekitar 100 email/hari; lihat log Executions di Apps Script
 
-### Error "Invalid credentials" di log?
-- App Password salah atau expired
-- Generate ulang App Password baru
+### "Akses ditolak." di aplikasi?
+- `OTP_APP_KEY` saat build tidak sama dengan Script Property `APP_KEY`
+
+### "Gagal mengirim email. Coba lagi."?
+- Cek log Executions di Apps Script (`GmailApp send failed: ...`) dan izin Gmail
 
 ### OTP expired terus?
-- Countdown 5 menit mulai dari OTP digenerate
+- Countdown 5 menit mulai dari OTP dibuat
 - Pastikan clock HP tidak melenceng jauh
 
 ---
 
-## 🔐 Keamanan
+## Keamanan
 
-- **OTP 6 digit** random secure (100.000 - 999.999)
-- **Expired 5 menit** — tidak bisa dipakai setelah countdown habis
-- **PIN hashed** — disimpan dengan salted hash, bukan plaintext
-- **Email stored** — untuk recovery, tersimpan di database lokal (SQLite)
-
----
-
-## 📦 Dependencies Baru
-
-```yaml
-dependencies:
-  mailer: ^6.0.1  # SMTP client untuk kirim email
-```
-
-File baru yang dibuat:
-- `lib/services/email_service.dart` — logic kirim OTP via SMTP
-- `lib/features/auth/otp_verification_screen.dart` — layar input OTP
-- `lib/features/auth/forgot_pin_screen.dart` — layar reset PIN
+- **OTP 6 digit** random (100.000 - 999.999), dibuat di server
+- **Expired 5 menit**: tidak bisa dipakai setelah countdown habis
+- **Cooldown 60 detik** per email untuk mencegah spam
+- **Maksimal 5 percobaan salah** per kode
+- **PIN hashed**: disimpan dengan salted hash, bukan plaintext
+- **Email stored**: untuk recovery, tersimpan di database lokal (SQLite)
 
 ---
 
-Selamat menggunakan Duitku v1.7.0! 🚀💰
+Selamat menggunakan Duitku v1.7.0!

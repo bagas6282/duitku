@@ -146,7 +146,7 @@ class AppTheme {
       ),
 
       // ── Card ──────────────────────────────────────────────────────────
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         elevation:    0,
         color:        isDark ? AppColors.void1 : AppColors.frostCard,
         shape:        RoundedRectangleBorder(
@@ -347,7 +347,7 @@ class AppTheme {
       ),
 
       // ── Dialog ────────────────────────────────────────────────────────
-      dialogTheme: DialogTheme(
+      dialogTheme: DialogThemeData(
         backgroundColor:  isDark ? AppColors.void1 : AppColors.frostCard,
         surfaceTintColor: Colors.transparent,
         elevation:        0,

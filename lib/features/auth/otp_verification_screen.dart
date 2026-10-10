@@ -64,17 +64,39 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
     _canResend = false;
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (_countdown > 0) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      if (_countdown > 1) {
         setState(() => _countdown--);
       } else {
-        setState(() => _canResend = true);
+        // Hitung mundur habis: tombol kirim ulang aktif di tick yang sama.
         timer.cancel();
+        setState(() {
+          _countdown = 0;
+          _canResend = true;
+        });
       }
     });
   }
 
   void _onDigitChanged(int index, String value) {
-    if (value.length == 1) {
+    // Hanya digit yang diterima; sisanya dibuang.
+    final digits = value.replaceAll(RegExp(r'\D'), '');
+    if (digits.length > 1) {
+      // Paste atau ketikan lebih dari satu digit: sebarkan ke field berikutnya.
+      _fillFrom(index, digits);
+      return;
+    }
+    if (digits != value) {
+      _controllers[index].value = TextEditingValue(
+        text: digits,
+        selection: TextSelection.collapsed(offset: digits.length),
+      );
+    }
+
+    if (digits.length == 1) {
       // Pindah ke field berikutnya
       if (index < 5) {
         _focusNodes[index + 1].requestFocus();
@@ -83,11 +105,28 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
         _focusNodes[index].unfocus();
         _submit();
       }
-    } else if (value.isEmpty && index > 0) {
+    } else if (digits.isEmpty && index > 0) {
       // Backspace — pindah ke field sebelumnya
       _focusNodes[index - 1].requestFocus();
     }
     setState(() => _error = null);
+  }
+
+  /// Mengisi field mulai dari [start] dengan [digits], maksimal sampai field ke-6.
+  void _fillFrom(int start, String digits) {
+    var i = start;
+    for (final ch in digits.split('')) {
+      if (i > 5) break;
+      _controllers[i].text = ch;
+      i++;
+    }
+    setState(() => _error = null);
+    if (i > 5) {
+      _focusNodes[5].unfocus();
+      _submit();
+    } else {
+      _focusNodes[i].requestFocus();
+    }
   }
 
   String get _otpCode {
@@ -95,8 +134,9 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
   }
 
   Future<void> _submit() async {
+    if (_loading) return; // cegah submit ganda saat request berjalan
     final otp = _otpCode;
-    if (otp.length != 6) {
+    if (!RegExp(r'^\d{6}$').hasMatch(otp)) {
       setState(() => _error = 'Masukkan 6 digit kode OTP');
       return;
     }
@@ -113,7 +153,17 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
       _error = null;
     });
 
-    final result = await verify(otp);
+    final OtpResult result;
+    try {
+      result = await verify(otp);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = 'Gagal memverifikasi kode. Coba lagi.';
+      });
+      return;
+    }
     if (!mounted) return;
     setState(() => _loading = false);
 
@@ -130,7 +180,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
   }
 
   Future<void> _resend() async {
-    if (!_canResend) return;
+    if (!_canResend || _loading) return;
     
     setState(() => _loading = true);
     final result = await widget.onResendOtp();
@@ -260,7 +310,6 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                               focusNode: _focusNodes[index],
                               textAlign: TextAlign.center,
                               keyboardType: TextInputType.number,
-                              maxLength: 1,
                               style: TextStyle(
                                 fontSize: 22,
                                 fontWeight: FontWeight.w700,
@@ -353,7 +402,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                   const SizedBox(height: 24),
                   
                   // Countdown & Resend
-                  if (_countdown > 0)
+                  if (!_canResend)
                     Wrap(
                       alignment: WrapAlignment.center,
                       crossAxisAlignment: WrapCrossAlignment.center,

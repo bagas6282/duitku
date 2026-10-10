@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/transitions.dart';
+import '../budget/budget_editor.dart';
+import '../goals/goal_editor.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme.dart';
@@ -20,8 +22,18 @@ class HomeShell extends StatefulWidget {
   State<HomeShell> createState() => _HomeShellState();
 }
 
-class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
+class _HomeShellState extends State<HomeShell>
+    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   int _index = 0;
+
+  /// Tab the user came from, kept on screen while the switch animation runs.
+  int _previousIndex = 0;
+
+  /// +1 when moving to a later tab (slides in from the right), -1 otherwise.
+  int _slideDirection = 1;
+
+  /// Drives the tab switch: 0 at the start of a switch, 1 once it has settled.
+  late final AnimationController _tabAnim;
   bool _fabVisible = true;
 
   bool _onScroll(ScrollNotification n) {
@@ -46,11 +58,17 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _tabAnim = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 250),
+      value: 1,
+    );
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _tabAnim.dispose();
     super.dispose();
   }
 
@@ -61,9 +79,72 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _addTransaction() async {
+  /// Opens the editor matching the active tab: Budget and Goals create their
+  /// own entities, every other tab records a transaction.
+  /// Selects a tab and plays the switch animation.
+  ///
+  /// The incoming tab fades in while sliding from the side it sits on in the
+  /// bar; the outgoing tab fades and slides away.
+  void _selectTab(int i) {
+    if (i == _index) return;
+    setState(() {
+      _previousIndex = _index;
+      _slideDirection = i > _index ? 1 : -1;
+      _index = i;
+    });
+    _tabAnim.forward(from: 0);
+  }
+
+  /// Stacks every tab so each keeps its state and scroll position, the same as
+  /// IndexedStack, but animates the change between them.
+  Widget _buildTabs(List<Widget> pages) {
+    return AnimatedBuilder(
+      animation: _tabAnim,
+      builder: (context, _) {
+        final t = Curves.easeOutCubic.transform(_tabAnim.value);
+        final animating = _tabAnim.isAnimating;
+        const distance = 24.0;
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            for (var i = 0; i < pages.length; i++)
+              // The same widget tree is built for every tab, so switching
+              // never remounts a page and its state survives.
+              Offstage(
+                offstage: !(i == _index || (animating && i == _previousIndex)),
+                child: IgnorePointer(
+                  ignoring: i != _index,
+                  child: Opacity(
+                    opacity: (i == _index ? t : 1 - t).clamp(0.0, 1.0),
+                    child: Transform.translate(
+                      offset: Offset(
+                        i == _index
+                            ? (1 - t) * _slideDirection * distance
+                            : -t * _slideDirection * distance,
+                        0,
+                      ),
+                      child: pages[i],
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _addForCurrentTab() async {
+    final Widget? editor = switch (_index) {
+      0 => const TransactionEditor(),
+      1 => const TransactionEditor(),
+      2 => const BudgetEditor(),
+      3 => const GoalEditor(),
+      _ => null,
+    };
+    if (editor == null) return;
     await Navigator.of(context).push(
-      AppPageRoute(builder: (_) => const TransactionEditor()),
+      AppPageRoute(builder: (_) => editor),
     );
   }
 
@@ -95,16 +176,16 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
             ),
       body: NotificationListener<ScrollNotification>(
         onNotification: _onScroll,
-        child: IndexedStack(index: _index, children: pages),
+        child: _buildTabs(pages),
       ),
       floatingActionButton: _ScrollReveal(
-        visible: _fabVisible,
-        child: _AddFab(onPressed: _addTransaction),
+        visible: _fabVisible && _index != 4,
+        child: _AddFab(onPressed: _addForCurrentTab),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       bottomNavigationBar: _BottomNav(
         index: _index,
-        onTap: (i) => setState(() => _index = i),
+        onTap: _selectTab,
       ),
     );
   }

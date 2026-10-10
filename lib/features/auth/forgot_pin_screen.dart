@@ -41,6 +41,7 @@ class _ForgotPinScreenState extends State<ForgotPinScreen> {
   }
 
   Future<void> _sendOtp() async {
+    if (_loading) return; // cegah kirim ganda saat request berjalan
     if (!_formKey.currentState!.validate()) return;
 
     final email = _emailCtrl.text.trim().toLowerCase();
@@ -103,6 +104,7 @@ class _ForgotPinScreenState extends State<ForgotPinScreen> {
   void _showResetPinDialog(String email) {
     final newPinCtrl = TextEditingController();
     final confirmPinCtrl = TextEditingController();
+    bool saving = false; // cegah simpan ganda dari ketukan berulang
 
     showDialog(
       context: context,
@@ -153,6 +155,7 @@ class _ForgotPinScreenState extends State<ForgotPinScreen> {
             ),
             FilledButton(
               onPressed: () async {
+                if (saving) return;
                 final pin = newPinCtrl.text.trim();
                 final confirm = confirmPinCtrl.text.trim();
 
@@ -176,6 +179,7 @@ class _ForgotPinScreenState extends State<ForgotPinScreen> {
                   return;
                 }
 
+                saving = true;
                 // Set PIN baru
                 final state = context.read<AppState>();
                 final messenger = ScaffoldMessenger.of(context);
@@ -189,7 +193,7 @@ class _ForgotPinScreenState extends State<ForgotPinScreen> {
                 
                 messenger.showSnackBar(
                   const SnackBar(
-                    content: Text('✅ PIN berhasil direset! Silakan login.'),
+                    content: Text('PIN berhasil direset! Silakan login.'),
                     backgroundColor: AppColors.mint,
                   ),
                 );

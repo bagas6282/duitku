@@ -1,13 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-  Aplikasi ini HANYA berbicara plain HTTP ke server OTP Duitku
-  (94.237.78.157:80 / :8081) — tidak ada endpoint lain sama sekali,
-  jadi mengizinkan cleartext di sini tidak menambah risiko apa pun.
-
-  Catatan: kalau base-config dibiarkan false, kecocokan <domain> terhadap
-  literal IP tidak selalu konsisten antar versi Android dan request bisa
-  diblokir diam-diam oleh sistem sebelum sempat keluar jaringan.
--->
+<!-- Release traffic is HTTPS only (Apps Script). Cleartext is disabled. -->
 <network-security-config>
-    <base-config cleartextTrafficPermitted="true" />
+    <base-config cleartextTrafficPermitted="false" />
 </network-security-config>

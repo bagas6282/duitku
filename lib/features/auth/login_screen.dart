@@ -58,6 +58,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _submit() async {
+    if (_loading) return; // cegah submit ganda saat request berjalan
     if (!_formKey.currentState!.validate()) return;
 
     if (_isRegister) {
@@ -145,6 +146,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
 
   Future<void> _guestLogin() async {
+    if (_loading) return;
     setState(() => _loading = true);
     try {
       await context.read<AppState>().continueAsGuest();
